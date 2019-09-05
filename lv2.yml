@@ -23,15 +23,6 @@ TRANSLATOR:
   ConstRules:
     defines: expand
   
-  PtrTips:
-    function:
-      - {target: "LV2_Feature", self: ref}
-  
-  TypeTips:
-    type:
-      - {target: "LV2_Feature", self: plain}
-      - {target: "^LV2_Descriptor", self: plain}
-
   Rules:
     global:
       - {action: accept, from: "^lv2_"}
