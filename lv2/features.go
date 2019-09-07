@@ -4,12 +4,15 @@ package lv2
 #include "cgo_helpers.h"
 #include <assert.h>
 #include <stdint.h>
+
+// allocate new feature array with NULL-termination
 static LV2_Feature** alloc_features() {
 	LV2_Feature** fs = (LV2_Feature**) malloc (sizeof (LV2_Feature*));
 	fs[0] = NULL;
 	return fs;
 }
 
+// resize the feature array to count
 static LV2_Feature** realloc_features(LV2_Feature** fs, uint32_t count) {
 	assert(count > 0);
 	fs = (LV2_Feature**) realloc (fs, count * (uint32_t)sizeof (LV2_Feature*));
@@ -17,6 +20,7 @@ static LV2_Feature** realloc_features(LV2_Feature** fs, uint32_t count) {
 	return fs;
 }
 
+// assign a feature to the array by index
 static void set_feature (LV2_Feature** fs, uint32_t index, LV2_Feature* f) {
 	fs[index] = f;
 }
