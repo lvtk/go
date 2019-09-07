@@ -17,3 +17,20 @@ func TestFeatureDataNil(t *testing.T) {
 		t.Errorf("Data not nil")
 	}
 }
+
+func TestFeatureSlice(t *testing.T) {
+	fs := NewFeatures()
+	defer fs.Clear()
+	if fs.Size() != 0 {
+		t.Fatalf("size incorrect")
+	}
+
+	nf := new(Feature)
+	nf.URI = "http://hello.org"
+	nf.Data = nil
+	fs.Append(nf)
+
+	if fs.Size() != 1 {
+		t.Fatalf("size incorrect")
+	}
+}

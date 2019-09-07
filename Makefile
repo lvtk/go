@@ -1,5 +1,5 @@
 all:
-	c-for-go lv2.yml 
+	c-for-go lv2.yml
 
 clean:
 	rm -f lv2/cgo_helpers.go lv2/cgo_helpers.h lv2/cgo_helpers.c

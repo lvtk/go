@@ -1,2 +1,7 @@
-/lilv*
-/ui*
+
+/ui/
+/plugin/
+/test
+/test.go
+/go
+/lv2go/
