@@ -2,10 +2,8 @@ package urid
 
 /*
 #cgo pkg-config: lv2
-#cgo pkg-config: lvtk-2
-
-#include <lv2/lv2plug.in/ns/ext/urid/urid.h>
 #include <stdlib.h>
+#include <lv2/lv2plug.in/ns/ext/urid/urid.h>
 #include "directory.h"
 */
 import "C"
@@ -28,6 +26,9 @@ func (d *Directory) ensureDirectory() {
 
 // Free allocated data
 func (d *Directory) Free() {
+	if d == nil {
+		return
+	}
 	if d.directory != nil {
 		C.lvtk_uri_directory_free(d.directory)
 		d.directory = nil
