@@ -55,6 +55,7 @@ type Instance struct {
 // State - wraps LilvState
 type State struct {
 	state *C.LilvState
+	world *C.LilvWorld
 }
 
 // Iter - alias LilvIter

@@ -6,7 +6,11 @@ package lilv
 #include <stdlib.h>
 */
 import "C"
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/lvtk/go/urid"
+)
 
 // See World.SetOption
 const (
@@ -334,4 +338,84 @@ func (w *World) NewBool(val bool) *Node {
 		return nil
 	}
 	return createManagedNode(C.lilv_new_bool(w.world, C.bool(val)))
+}
+
+/*
+NewState - Load a state snapshot from the world RDF model.
+This function can be used to load the default state of a plugin by passing
+the plugin URI as the `subject` parameter.
+@param world The world.
+@param _map URID mapper.
+@param node The subject of the state description (e.g. a preset URI).
+@return A new LilvState which must be freed with State.Free(), or NULL.
+*/
+func (w *World) NewState(_map urid.Map, node *Node) *State {
+	if w == nil || w.world == nil {
+		return nil
+	}
+
+	cstate := C.lilv_state_new_from_world(w.world,
+		(*C.LV2_URID_Map)(_map), node.node)
+	if cstate == nil {
+		return nil
+	}
+
+	s := new(State)
+	s.state = cstate
+	s.world = w.world
+	return s
+}
+
+/*
+NewFileState - Load a state snapshot from a file.
+@param world The world.
+@param map URID mapper.
+@param subject The subject of the state description (e.g. a preset URI).
+@param path The path of the file containing the state description.
+@return A new LilvState which must be freed with lilv_state_free().
+
+If `subject` is NULL, it is taken to be the URI of the file (i.e.
+"<>" in Turtle).
+
+This function parses the file separately to create the state, it does not
+parse the file into the world model, i.e. the returned state is the only
+new memory consumed once this function returns.
+*/
+func (w *World) NewFileState(_map urid.Map, subject *Node, path string) *State {
+	if w == nil || w.world == nil {
+		return nil
+	}
+
+	cpath := C.CString(path)
+	defer Free(unsafe.Pointer(cpath))
+	cstate := C.lilv_state_new_from_file(w.world,
+		(*C.LV2_URID_Map)(_map), subject.node, cpath)
+	if cstate == nil {
+		return nil
+	}
+
+	s := new(State)
+	s.state = cstate
+	s.world = w.world
+	return s
+}
+
+// NewStringState - Load a state snapshot from a string made by lilv_state_to_string().
+func (w *World) NewStringState(_map urid.Map, str string) *State {
+	if w == nil || w.world == nil {
+		return nil
+	}
+
+	cstr := C.CString(str)
+	defer Free(unsafe.Pointer(cstr))
+	cstate := C.lilv_state_new_from_string(w.world,
+		(*C.LV2_URID_Map)(_map), cstr)
+	if cstate == nil {
+		return nil
+	}
+
+	s := new(State)
+	s.state = cstate
+	s.world = w.world
+	return s
 }

@@ -11,6 +11,12 @@ import (
 	"github.com/lvtk/go/lv2"
 )
 
+// Map pointer to a LV2_URID_Map
+type Map unsafe.Pointer
+
+// Unmap pointer to a LV2_URID_Unmap
+type Unmap unsafe.Pointer
+
 // Directory of mapped URIs
 type Directory struct {
 	directory unsafe.Pointer
@@ -44,11 +50,11 @@ func (d *Directory) MapFeature() *lv2.Feature {
 }
 
 // MapRef - return pointer to ctype LV2_URID_Map
-func (d *Directory) MapRef() unsafe.Pointer {
+func (d *Directory) MapRef() Map {
 	if d == nil || d.directory == nil {
 		return nil
 	}
-	return unsafe.Pointer(C.lvtk_uri_directory_get_map(d.directory))
+	return Map(C.lvtk_uri_directory_get_map(d.directory))
 }
 
 // UnmapFeature returns the underlying unmap feature
@@ -63,11 +69,11 @@ func (d *Directory) UnmapFeature() *lv2.Feature {
 }
 
 // UnmapRef - return pointer to ctype LV2_URID_Unmap
-func (d *Directory) UnmapRef() unsafe.Pointer {
+func (d *Directory) UnmapRef() Unmap {
 	if d == nil || d.directory == nil {
 		return nil
 	}
-	return unsafe.Pointer(C.lvtk_uri_directory_get_unmap(d.directory))
+	return Unmap(C.lvtk_uri_directory_get_unmap(d.directory))
 }
 
 // Map a URI
