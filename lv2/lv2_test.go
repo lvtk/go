@@ -18,6 +18,7 @@ func TestFeatureDataNil(t *testing.T) {
 	if feature.Data != nil {
 		t.Errorf("Data not nil")
 	}
+	feature.Free()
 }
 
 func TestFeatureSlice(t *testing.T) {

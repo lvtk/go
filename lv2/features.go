@@ -27,7 +27,9 @@ static void set_feature (LV2_Feature** fs, uint32_t index, LV2_Feature* f) {
 
 */
 import "C"
-import "unsafe"
+import (
+	"unsafe"
+)
 
 // Features a managed list of features
 type Features struct {
@@ -50,6 +52,15 @@ func (f *Features) Clear() {
 	C.free(unsafe.Pointer(f.cfeats))
 	f.cfeats = C.alloc_features()
 	f.count = 1
+
+	for i := 0; i < len(f.features); i++ {
+		ft := f.features[i]
+		if ft != nil {
+			ft.Free()
+		}
+	}
+
+	f.features = make([]*Feature, 0)
 }
 
 // Size returns the number of features stored
