@@ -33,6 +33,8 @@ const LV2_Feature* lvtk_uri_directory_get_unmap_feature(LvtkURIDirectory* d) {
     return (static_cast<lvtk::URIDirectory*>(d))->get_unmap_feature();
 }
 
-LV2_URID_Unmap* lvtk_uri_directory_get_unmap(LvtkURIDirectory*);
+LV2_URID_Unmap* lvtk_uri_directory_get_unmap(LvtkURIDirectory* d) {
     return (LV2_URID_Unmap*) lvtk_uri_directory_get_unmap_feature(d)->data;
+}
+
 }

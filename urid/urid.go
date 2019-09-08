@@ -49,7 +49,7 @@ func (d *Directory) MapRef() unsafe.Pointer {
 	if d == nil || d.directory == nil {
 		return nil
 	}
-	return C.lvtk_uri_directory_get_map(d.directory)
+	return unsafe.Pointer(C.lvtk_uri_directory_get_map(d.directory))
 }
 
 // UnmapFeature returns the underlying unmap feature
@@ -68,7 +68,7 @@ func (d *Directory) UnmapRef() unsafe.Pointer {
 	if d == nil || d.directory == nil {
 		return nil
 	}
-	return C.lvtk_uri_directory_get_unmap(d.directory)
+	return unsafe.Pointer(C.lvtk_uri_directory_get_unmap(d.directory))
 }
 
 // Map a URI
