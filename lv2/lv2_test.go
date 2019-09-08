@@ -23,7 +23,8 @@ func TestFeatureDataNil(t *testing.T) {
 
 func TestFeatureList(t *testing.T) {
 	fs := lv2.NewFeatureList()
-	defer fs.Clear()
+	defer fs.Free()
+
 	if fs.Size() != 0 {
 		t.Fatalf("size incorrect")
 	}
@@ -41,9 +42,16 @@ func TestFeatureList(t *testing.T) {
 		t.Fatalf("C features are nil")
 	}
 
-	fs = nil
-	fs.Append(nil)
 	fs.Clear()
+	if fs.Size() != 0 {
+		t.Errorf("list not cleared")
+	}
+
+	fs = nil
+	fs.Free()
+	fs.Clear()
+	fs.Append(nil)
+
 	if fs.Ref() != nil {
 		t.Errorf("ref not cleared")
 	}

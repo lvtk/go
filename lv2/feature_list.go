@@ -49,9 +49,8 @@ func NewFeatureList() *FeatureList {
 	return f
 }
 
-// Clear the list and free memory. This must be called
-// when finished with the array or you will leak memory
-func (f *FeatureList) Clear() {
+// Free - This must be called when finished with the array or you will leak memory
+func (f *FeatureList) Free() {
 	if f == nil {
 		return
 	}
@@ -60,9 +59,6 @@ func (f *FeatureList) Clear() {
 		C.free(unsafe.Pointer(f.cfeats))
 		f.cfeats = nil
 	}
-
-	f.cfeats = C.alloc_features()
-	f.count = 1
 
 	// features slice should contain all referenced data. if not
 	// this will make sure they get freed
@@ -73,8 +69,20 @@ func (f *FeatureList) Clear() {
 				ft.Free()
 			}
 		}
+		f.features = nil
+	}
+}
+
+// Clear the list and free memory.
+func (f *FeatureList) Clear() {
+	if f == nil {
+		return
 	}
 
+	f.Free()
+
+	f.cfeats = C.alloc_features()
+	f.count = 1
 	f.features = make([]*Feature, 0)
 }
 
