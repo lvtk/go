@@ -10,11 +10,11 @@ import "unsafe"
 /* UI */
 
 /*
-GetURI - Get the URI of a Plugin UI.
+URI - Get the URI of a Plugin UI.
 @param ui The Plugin UI
 @return a shared value which must not be modified or freed.
 */
-func (ui *UI) GetURI() *Node {
+func (ui *UI) URI() *Node {
 	if ui == nil || ui.ui == nil {
 		return nil
 	}
@@ -22,10 +22,10 @@ func (ui *UI) GetURI() *Node {
 }
 
 /*
-GetClasses - Get the types (URIs of RDF classes) of a Plugin UI.
+Classes - Get the types (URIs of RDF classes) of a Plugin UI.
 Returns a shared value which must not be modified.
 */
-func (ui *UI) GetClasses() *Nodes {
+func (ui *UI) Classes() *Nodes {
 	if ui == nil || ui.ui == nil {
 		return nil
 	}
@@ -43,11 +43,11 @@ func (ui *UI) IsA(classURI *Node) bool {
 }
 
 /*
-GetBundleURI - Get the URI for a Plugin UI's bundle.
+BundleURI - Get the URI for a Plugin UI's bundle.
 @param ui The Plugin UI
 @return a shared value which must not be modified or freed.
 */
-func (ui *UI) GetBundleURI() *Node {
+func (ui *UI) BundleURI() *Node {
 	if ui == nil || ui.ui == nil {
 		return nil
 	}
@@ -55,11 +55,11 @@ func (ui *UI) GetBundleURI() *Node {
 }
 
 /*
-GetBinaryURI - Get the URI for a Plugin UI's shared library.
+BinaryURI - Get the URI for a Plugin UI's shared library.
 @param ui The Plugin UI
 @return a shared value which must not be modified or freed.
 */
-func (ui *UI) GetBinaryURI() *Node {
+func (ui *UI) BinaryURI() *Node {
 	if ui == nil || ui.ui == nil {
 		return nil
 	}
