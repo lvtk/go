@@ -34,9 +34,9 @@ func TestMapping(t *testing.T) {
 	}
 
 	d.Free()
-	d.Free() // double delete
+	d.Free() // check double delete
 	d = nil
-	d.Free() // check no crash
+	d.Free() // check call on nil object
 
 	if d.Map("http://fake.uri") != 0 {
 		t.Errorf("not freed")
