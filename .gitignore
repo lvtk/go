@@ -5,3 +5,5 @@
 /test.go
 /go
 /lv2go/
+/.vscode/
+/worker/
