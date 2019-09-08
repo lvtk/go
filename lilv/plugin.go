@@ -69,18 +69,23 @@ eventually free it with lilv_instance_free().
 nil may be passed if the host supports no additional features.
 Returns nil if instantiation failed.
 */
-func (p *Plugin) Instantiate(sampleRate float64, features *lv2.Features) *Instance {
+func (p *Plugin) Instantiate(sampleRate float64, features *lv2.FeatureList) *Instance {
 	if p == nil || p.plugin == nil {
 		return nil
 	}
 
-	i := new(Instance)
 	var fs **C.LV2_Feature
 	if features != nil {
 		fs = (**C.LV2_Feature)(features.Get())
 	}
 
-	i.instance = C.lilv_plugin_instantiate(p.plugin, (C.double)(sampleRate), fs)
+	ci := C.lilv_plugin_instantiate(p.plugin, (C.double)(sampleRate), fs)
+	if ci == nil {
+		return nil
+	}
+
+	i := new(Instance)
+	i.instance = ci
 	return i
 }
 
