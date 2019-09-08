@@ -22,7 +22,8 @@ type PluginClass struct {
 
 // Port - wraps LilvPort
 type Port struct {
-	port *C.LilvPort
+	plugin *C.LilvPlugin
+	port   *C.LilvPort
 }
 
 // ScalePoint - wraps LilvScalePoint
@@ -73,6 +74,7 @@ type Plugins struct {
 // ScalePoints - wraps LilvScalePoints
 type ScalePoints struct {
 	scalePoints unsafe.Pointer
+	managed     bool
 }
 
 // UIs - wraps LilvUIs

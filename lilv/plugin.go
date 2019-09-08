@@ -244,7 +244,7 @@ func (p *Plugin) GetExtensionData() *Nodes {
 GetNumPorts - Get the number of ports on this plugin.
 */
 func (p *Plugin) GetNumPorts() uint32 {
-	return (uint32)(C.lilv_plugin_get_num_ports(p.plugin))
+	return uint32(C.lilv_plugin_get_num_ports(p.plugin))
 }
 
 /*
@@ -368,6 +368,7 @@ GetPortByIndex - Get a port on `plugin` by `index`.
 */
 func (p *Plugin) GetPortByIndex(index uint32) *Port {
 	port := new(Port)
+	port.plugin = p.plugin
 	port.port = C.lilv_plugin_get_port_by_index(p.plugin, (C.uint32_t)(index))
 	return port
 }
@@ -379,6 +380,7 @@ especially on plugins with a very large number of ports.
 */
 func (p *Plugin) GetPortBySymbol(symbol *Node) *Port {
 	port := new(Port)
+	port.plugin = p.plugin
 	port.port = C.lilv_plugin_get_port_by_symbol(p.plugin, symbol.node)
 	return port
 }
