@@ -25,8 +25,14 @@ const LV2_Feature* lvtk_uri_directory_get_map_feature(LvtkURIDirectory* d) {
     return (static_cast<lvtk::URIDirectory*>(d))->get_map_feature();
 }
 
+LV2_URID_Map* lvtk_uri_directory_get_map(LvtkURIDirectory* d) {
+    return (LV2_URID_Map*) lvtk_uri_directory_get_map_feature(d)->data;
+}
+
 const LV2_Feature* lvtk_uri_directory_get_unmap_feature(LvtkURIDirectory* d) {
     return (static_cast<lvtk::URIDirectory*>(d))->get_unmap_feature();
 }
 
+LV2_URID_Unmap* lvtk_uri_directory_get_unmap(LvtkURIDirectory*);
+    return (LV2_URID_Unmap*) lvtk_uri_directory_get_unmap_feature(d)->data;
 }

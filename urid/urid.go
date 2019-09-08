@@ -44,6 +44,14 @@ func (d *Directory) MapFeature() *lv2.Feature {
 		C.lvtk_uri_directory_get_map_feature(d.directory)))
 }
 
+// MapRef - return pointer to ctype LV2_URID_Map
+func (d *Directory) MapRef() unsafe.Pointer {
+	if d == nil || d.directory == nil {
+		return nil
+	}
+	return C.lvtk_uri_directory_get_map(d.directory)
+}
+
 // UnmapFeature returns the underlying unmap feature
 func (d *Directory) UnmapFeature() *lv2.Feature {
 	if d == nil {
@@ -53,6 +61,14 @@ func (d *Directory) UnmapFeature() *lv2.Feature {
 	d.ensureDirectory()
 	return lv2.NewFeatureRef(unsafe.Pointer(
 		C.lvtk_uri_directory_get_unmap_feature(d.directory)))
+}
+
+// UnmapRef - return pointer to ctype LV2_URID_Unmap
+func (d *Directory) UnmapRef() unsafe.Pointer {
+	if d == nil || d.directory == nil {
+		return nil
+	}
+	return C.lvtk_uri_directory_get_unmap(d.directory)
 }
 
 // Map a URI
