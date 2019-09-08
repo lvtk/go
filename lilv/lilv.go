@@ -283,9 +283,14 @@ func (w *World) NewFileURI(host string, path string) *Node {
 	if w == nil || w.world == nil {
 		return nil
 	}
-	chost := C.CString(host)
+
+	var chost *C.char
+	if len(host) > 0 {
+		chost = C.CString(host)
+		defer Free(unsafe.Pointer(chost))
+	}
+
 	cpath := C.CString(path)
-	defer Free(unsafe.Pointer(chost))
 	defer Free(unsafe.Pointer(cpath))
 	return createManagedNode(C.lilv_new_file_uri(w.world, chost, cpath))
 }
