@@ -6,21 +6,20 @@ package lilv
 #include <stdlib.h>
 */
 import "C"
-import (
-	"unsafe"
-)
+import "unsafe"
 
 /* Node */
 
 // Free - wraps lilv_node_free
 // Does nothing if the node is owned by Lilv internals
 func (n *Node) Free() {
-	if n != nil && n.node != nil {
-		if n.managed {
-			C.lilv_node_free(n.node)
-		}
-		n.node = nil
+	if n == nil && n.node == nil {
+		return
 	}
+	if n.managed {
+		C.lilv_node_free(n.node)
+	}
+	n.node = nil
 }
 
 // Duplicate - wraps lilv_node_duplicate
@@ -37,8 +36,8 @@ func (n *Node) Equals(o *Node) bool {
 	return bool(C.lilv_node_equals(n.node, o.node))
 }
 
-// GetTurtleToken - get the turtle token
-func (n *Node) GetTurtleToken() string {
+// TurtleToken - get the turtle token
+func (n *Node) TurtleToken() string {
 	cstr := C.lilv_node_get_turtle_token(n.node)
 	gstr := C.GoString(cstr)
 	Free(unsafe.Pointer(cstr))
@@ -164,8 +163,8 @@ func (ns *Nodes) IsEnd(iter *Iter) bool {
 		unsafe.Pointer(iter)))
 }
 
-// GetFirst - first node in collection
-func (ns *Nodes) GetFirst() *Node {
+// First - first node in collection
+func (ns *Nodes) First() *Node {
 	return createSharedNode(C.lilv_nodes_get_first(
 		unsafe.Pointer(ns.nodes)))
 }

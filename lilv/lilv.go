@@ -128,15 +128,15 @@ func (w *World) UnloadResource(uri *Node) int {
 	return int(C.lilv_world_unload_resource(w.world, uri.node))
 }
 
-// GetPluginClass - Get the parent of all other plugin classes, lv2:Plugin.
-func (w *World) GetPluginClass() *PluginClass {
+// PluginClass - Get the parent of all other plugin classes, lv2:Plugin.
+func (w *World) PluginClass() *PluginClass {
 	pc := new(PluginClass)
 	pc.pluginClass = (*C.LilvPluginClass)(C.lilv_world_get_plugin_class(w.world))
 	return pc
 }
 
 /*
-GetAllPlugins - Return a list of all found plugins.
+AllPlugins - Return a list of all found plugins.
 The returned list contains just enough references to query
 or instantiate plugins.  The data for a particular plugin will not be
 loaded into memory until a call to an lilv_plugin_* function results in
@@ -146,7 +146,7 @@ queries are very fast).
 The returned list and the plugins it contains are owned by `World`
 and must not be modifed
 */
-func (w *World) GetAllPlugins() *Plugins {
+func (w *World) AllPlugins() *Plugins {
 	if w == nil || w.world == nil {
 		return nil
 	}
@@ -156,10 +156,10 @@ func (w *World) GetAllPlugins() *Plugins {
 }
 
 /*
-GetPluginClasses - Return a list of all found plugin classes.
-Returned list is owned by world and must not be freed by the caller.
+PluginClasses - Return a list of all found plugin classes.
+Returned list is owned by world and must not be modified by the caller.
 */
-func (w *World) GetPluginClasses() *PluginClasses {
+func (w *World) PluginClasses() *PluginClasses {
 	if w == nil || w.world == nil {
 		return nil
 	}
@@ -252,14 +252,14 @@ func (w *World) Ask(subject *Node, predicate *Node, object *Node) bool {
 }
 
 /*
-GetSymbol - Get an LV2 symbol for some subject.
+Symbol - Get an LV2 symbol for some subject.
 
 This will return the lv2:symbol property of the subject if it is given
 explicitly, and otherwise will attempt to derive a symbol from the URI.
 Returns A string node that is a valid LV2 symbol, or nil on error.
 Return value must be freed with Node.Free()
 */
-func (w *World) GetSymbol(subject *Node) *Node {
+func (w *World) Symbol(subject *Node) *Node {
 	if w == nil || w.world == nil || subject == nil || subject.node == nil {
 		return nil
 	}

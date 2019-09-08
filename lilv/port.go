@@ -10,11 +10,11 @@ static uint32_t invalid_port_index() {
 import "C"
 
 /*
-GetNode - Get the RDF node of `port`.
+Node - Get the RDF node of `port`.
 Ports nodes may be may be URIs or blank nodes.
-@return A shared node which must not be modified or freed.
+@return A shared node which must not be modified.
 */
-func (p *Port) GetNode() *Node {
+func (p *Port) Node() *Node {
 	if p == nil || p.port == nil || p.plugin == nil {
 		return nil
 	}
@@ -22,10 +22,10 @@ func (p *Port) GetNode() *Node {
 }
 
 /*
-GetValue - Port analog of Plugin.GetValue()
-Returned value must be freed with Nodes.Free
+Value - Port analog of Plugin.Value()
+Returned value must be freed with Nodes.Free()
 */
-func (p *Port) GetValue(predicate *Node) *Nodes {
+func (p *Port) Value(predicate *Node) *Nodes {
 	if p == nil || p.port == nil || p.plugin == nil || predicate == nil || predicate.node == nil {
 		return nil
 	}
@@ -48,10 +48,10 @@ func (p *Port) Get(predicate *Node) *Node {
 }
 
 /*
-GetProperties - Return the LV2 port properties of a port.
+Properties - Return the LV2 port properties of a port.
 Retured value must be freed with Nodes.Free()
 */
-func (p *Port) GetProperties() *Nodes {
+func (p *Port) Properties() *Nodes {
 	if p == nil || p.plugin == nil || p.port == nil {
 		return nil
 	}
@@ -83,11 +83,11 @@ func (p *Port) SupportsEvent(eventType *Node) bool {
 }
 
 /*
-GetIndex - Get the index of a port.
+Index - Get the index of a port.
 The index is only valid for the life of the plugin and may change between
 versions.  For a stable identifier, use the symbol.
 */
-func (p *Port) GetIndex() uint32 {
+func (p *Port) Index() uint32 {
 	if p == nil || p.plugin == nil || p.port == nil {
 		return uint32(C.invalid_port_index())
 	}
@@ -95,11 +95,11 @@ func (p *Port) GetIndex() uint32 {
 }
 
 /*
-GetSymbol - Get the symbol of a port.
+Symbol - Get the symbol of a port.
 The 'symbol' is a short string, a valid C identifier.
 Returned value is owned by `port` and must not be modified.
 */
-func (p *Port) GetSymbol() *Node {
+func (p *Port) Symbol() *Node {
 	if p == nil || p.plugin == nil || p.port == nil {
 		return nil
 	}
@@ -107,12 +107,12 @@ func (p *Port) GetSymbol() *Node {
 }
 
 /*
-GetName - Get the name of a port.
+Name - Get the name of a port.
 This is guaranteed to return the untranslated name (the doap:name in the
 data file without a language tag).  Returned value must be freed by
 the caller with Node.Free()
 */
-func (p *Port) GetName() *Node {
+func (p *Port) Name() *Node {
 	if p == nil || p.plugin == nil || p.port == nil {
 		return nil
 	}
@@ -120,13 +120,13 @@ func (p *Port) GetName() *Node {
 }
 
 /*
-GetClasses - Get all the classes of a port.
+Classes - Get all the classes of a port.
 This can be used to determine if a port is an input, output, audio,
 control, midi, etc, etc, though it's simpler to use lilv_port_is_a().
 The returned list does not include lv2:Port, which is implied.
 Returned value is shared and must not be modified by caller.
 */
-func (p *Port) GetClasses() *Nodes {
+func (p *Port) Classes() *Nodes {
 	if p == nil || p.plugin == nil || p.port == nil {
 		return nil
 	}
@@ -149,13 +149,13 @@ func (p *Port) IsA(portClass *Node) bool {
 }
 
 /*
-GetScalePoints - Get the scale points (enumeration values) of a port.
+ScalePoints - Get the scale points (enumeration values) of a port.
 This returns a collection of 'interesting' named values of a port
 (e.g. appropriate entries for a UI selector associated with this port).
 Returned value may be NULL if `port` has no scale points, otherwise it
 must be freed by caller with ScalePoints.Free().
 */
-func (p *Port) GetScalePoints() *ScalePoints {
+func (p *Port) ScalePoints() *ScalePoints {
 	if p == nil || p.plugin == nil || p.port == nil {
 		return nil
 	}

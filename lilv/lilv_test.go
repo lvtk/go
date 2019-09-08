@@ -28,12 +28,12 @@ func TestNewWorldURI(t *testing.T) {
 	}
 }
 
-func TestNodeGetTurtleToken(t *testing.T) {
+func TestNodeTurtleToken(t *testing.T) {
 	world := NewWorld()
 	defer world.Free()
 	uri := world.NewURI("http://google.com")
 	defer uri.Free()
-	uri.GetTurtleToken()
+	uri.TurtleToken()
 }
 
 func TestNodeBool(t *testing.T) {
