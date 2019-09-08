@@ -12,7 +12,7 @@ import (
 	"github.com/lvtk/go/urid"
 )
 
-// Free - destroy the state
+// Free - destroy the state. does nothing if nil or already freed
 func (s *State) Free() {
 	if s == nil || s.state == nil {
 		return
