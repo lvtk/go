@@ -20,7 +20,7 @@ type Directory struct {
 	directory unsafe.Pointer
 }
 
-func (d *Directory) createDirectoryIfNeeded() {
+func (d *Directory) ensureDirectory() {
 	if d.directory == nil {
 		d.directory = C.lvtk_uri_directory_new()
 	}
@@ -34,23 +34,23 @@ func (d *Directory) Free() {
 	}
 }
 
-// GetMapFeature get the underlying map feature
-func (d *Directory) GetMapFeature() *lv2.Feature {
+// MapFeature returns the underlying map feature
+func (d *Directory) MapFeature() *lv2.Feature {
 	if d == nil {
 		return nil
 	}
-	d.createDirectoryIfNeeded()
+	d.ensureDirectory()
 	return lv2.NewFeatureRef(unsafe.Pointer(
 		C.lvtk_uri_directory_get_map_feature(d.directory)))
 }
 
-// GetUnmapFeature get the underlying unmap feature
-func (d *Directory) GetUnmapFeature() *lv2.Feature {
+// UnmapFeature returns the underlying unmap feature
+func (d *Directory) UnmapFeature() *lv2.Feature {
 	if d == nil {
 		return nil
 	}
 
-	d.createDirectoryIfNeeded()
+	d.ensureDirectory()
 	return lv2.NewFeatureRef(unsafe.Pointer(
 		C.lvtk_uri_directory_get_unmap_feature(d.directory)))
 }
@@ -61,7 +61,7 @@ func (d *Directory) Map(uri string) uint32 {
 		return 0
 	}
 
-	d.createDirectoryIfNeeded()
+	d.ensureDirectory()
 	cstr := C.CString(uri)
 	defer C.free(unsafe.Pointer(cstr))
 	return uint32(C.lvtk_uri_directory_map(d.directory, cstr))
@@ -72,6 +72,6 @@ func (d *Directory) Unmap(urid uint32) string {
 	if d == nil {
 		return ""
 	}
-	d.createDirectoryIfNeeded()
+	d.ensureDirectory()
 	return C.GoString(C.lvtk_uri_directory_unmap(d.directory, C.uint32_t(urid)))
 }
