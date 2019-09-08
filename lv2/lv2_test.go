@@ -21,7 +21,7 @@ func TestFeatureDataNil(t *testing.T) {
 	feature.Free()
 }
 
-func TestFeatureSlice(t *testing.T) {
+func TestFeatureList(t *testing.T) {
 	fs := lv2.NewFeatureList()
 	defer fs.Clear()
 	if fs.Size() != 0 {
@@ -35,5 +35,20 @@ func TestFeatureSlice(t *testing.T) {
 
 	if fs.Size() != 1 {
 		t.Fatalf("size incorrect")
+	}
+
+	if fs.Ref() == nil {
+		t.Fatalf("C features are nil")
+	}
+
+	fs = nil
+	fs.Append(nil)
+	fs.Clear()
+	if fs.Ref() != nil {
+		t.Errorf("ref not cleared")
+	}
+
+	if fs.Size() > 0 {
+		t.Errorf("size incorrect of nil FeatureList")
 	}
 }

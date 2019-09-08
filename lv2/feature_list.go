@@ -77,15 +77,18 @@ func (f *FeatureList) Clear() {
 
 // Size returns the number of features stored
 func (f *FeatureList) Size() uint32 {
-	if f.count < 1 {
+	if f == nil || f.count < 1 {
 		return 0
 	}
 	return f.count - 1
 }
 
-// Get a raw feature array which is NULL-terminated. Can be
+// Ref a raw feature array which is NULL-terminated. Can be
 // passed to c functions that have const *LV2_Feature *const params
-func (f *FeatureList) Get() unsafe.Pointer {
+func (f *FeatureList) Ref() unsafe.Pointer {
+	if f == nil || f.cfeats == nil {
+		return nil
+	}
 	return unsafe.Pointer(f.cfeats)
 }
 
