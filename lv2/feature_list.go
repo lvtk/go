@@ -32,6 +32,9 @@ import (
 )
 
 // FeatureList a managed list of features
+// LV2 iteself doesn't provide a way to manage feature lists. This type exists
+// so other go packages can easily pass const *LV2_Feature *const to other C
+// libraries as a parameter (e.g. lilv, suil, and so on...)
 type FeatureList struct {
 	features []*Feature
 	cfeats   **C.LV2_Feature

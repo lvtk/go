@@ -76,7 +76,7 @@ func (p *Plugin) Instantiate(sampleRate float64, features *lv2.FeatureList) *Ins
 
 	var fs **C.LV2_Feature
 	if features != nil {
-		fs = (**C.LV2_Feature)(features.Get())
+		fs = (**C.LV2_Feature)(features.Ref())
 	}
 
 	ci := C.lilv_plugin_instantiate(p.plugin, (C.double)(sampleRate), fs)
