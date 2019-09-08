@@ -31,16 +31,16 @@ import (
 	"unsafe"
 )
 
-// Features a managed list of features
-type Features struct {
+// FeatureList a managed list of features
+type FeatureList struct {
 	features []*Feature
 	cfeats   **C.LV2_Feature
 	count    uint32
 }
 
-// NewFeatures - create new feature list
-func NewFeatures() *Features {
-	f := new(Features)
+// NewFeatureList - create new feature list
+func NewFeatureList() *FeatureList {
+	f := new(FeatureList)
 	f.cfeats = C.alloc_features()
 	f.count = 1
 	return f
@@ -48,15 +48,27 @@ func NewFeatures() *Features {
 
 // Clear the list and free memory. This must be called
 // when finished with the array or you will leak memory
-func (f *Features) Clear() {
-	C.free(unsafe.Pointer(f.cfeats))
+func (f *FeatureList) Clear() {
+	if f == nil {
+		return
+	}
+
+	if f.cfeats != nil {
+		C.free(unsafe.Pointer(f.cfeats))
+		f.cfeats = nil
+	}
+
 	f.cfeats = C.alloc_features()
 	f.count = 1
 
-	for i := 0; i < len(f.features); i++ {
-		ft := f.features[i]
-		if ft != nil {
-			ft.Free()
+	// features slice should contain all referenced data. if not
+	// this will make sure they get freed
+	if f.features != nil {
+		for i := 0; i < len(f.features); i++ {
+			ft := f.features[i]
+			if ft != nil {
+				ft.Free()
+			}
 		}
 	}
 
@@ -64,7 +76,7 @@ func (f *Features) Clear() {
 }
 
 // Size returns the number of features stored
-func (f *Features) Size() uint32 {
+func (f *FeatureList) Size() uint32 {
 	if f.count < 1 {
 		return 0
 	}
@@ -73,12 +85,12 @@ func (f *Features) Size() uint32 {
 
 // Get a raw feature array which is NULL-terminated. Can be
 // passed to c functions that have const *LV2_Feature *const params
-func (f *Features) Get() unsafe.Pointer {
+func (f *FeatureList) Get() unsafe.Pointer {
 	return unsafe.Pointer(f.cfeats)
 }
 
 // Append a new feature to the list
-func (f *Features) Append(feature *Feature) {
+func (f *FeatureList) Append(feature *Feature) {
 	if f == nil || feature == nil {
 		return
 	}

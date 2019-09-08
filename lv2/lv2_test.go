@@ -22,7 +22,7 @@ func TestFeatureDataNil(t *testing.T) {
 }
 
 func TestFeatureSlice(t *testing.T) {
-	fs := lv2.NewFeatures()
+	fs := lv2.NewFeatureList()
 	defer fs.Clear()
 	if fs.Size() != 0 {
 		t.Fatalf("size incorrect")
