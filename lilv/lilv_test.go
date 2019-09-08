@@ -6,6 +6,9 @@ import (
 
 func TestNewWorldAndFree(t *testing.T) {
 	world := NewWorld()
+	if world.world == nil {
+		t.Fatalf("world not created")
+	}
 	world.Free()
 	if world.world != nil {
 		t.Errorf("world not freed")
