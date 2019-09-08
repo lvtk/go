@@ -2,8 +2,6 @@ package urid
 
 /*
 #cgo pkg-config: lv2
-#include <stdlib.h>
-#include <lv2/lv2plug.in/ns/ext/urid/urid.h>
 #include "directory.h"
 */
 import "C"
