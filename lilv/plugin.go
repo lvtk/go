@@ -399,12 +399,26 @@ func (p *Plugin) GetPortByDesignation(portClass *Node, designation *Node) *Port 
 	return port
 }
 
+/*
+GetUIs - Get all UIs for `plugin`.
+Returned value must be freed by caller using UIs.Free().
+*/
+func (p *Plugin) GetUIs() *UIs {
+	if p == nil || p.plugin == nil {
+		return nil
+	}
+	uis := new(UIs)
+	uis.uis = C.lilv_plugin_get_uis(p.plugin)
+	uis.managed = true
+	return uis
+}
+
 /* PluginClasses */
 
 // Free - destroy this collection
 func (pcs *PluginClasses) Free() {
 	if pcs != nil && pcs.pluginClasses != nil {
-		if pcs.shared {
+		if pcs.managed {
 			C.lilv_plugin_classes_free(unsafe.Pointer(pcs.pluginClasses))
 		}
 		pcs.pluginClasses = nil

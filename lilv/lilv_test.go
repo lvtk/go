@@ -4,16 +4,16 @@ import (
 	"testing"
 )
 
-func TestWorldNewAndFree(t *testing.T) {
-	world := WorldNew()
+func TestNewWorldAndFree(t *testing.T) {
+	world := NewWorld()
 	world.Free()
 	if world.world != nil {
 		t.Errorf("world not freed")
 	}
 }
 
-func TestWorldNewURI(t *testing.T) {
-	world := WorldNew()
+func TestNewWorldURI(t *testing.T) {
+	world := NewWorld()
 	defer world.Free()
 	uri := world.NewURI("http://google.com")
 	defer uri.Free()
@@ -26,7 +26,7 @@ func TestWorldNewURI(t *testing.T) {
 }
 
 func TestNodeGetTurtleToken(t *testing.T) {
-	world := WorldNew()
+	world := NewWorld()
 	defer world.Free()
 	uri := world.NewURI("http://google.com")
 	defer uri.Free()
@@ -34,7 +34,7 @@ func TestNodeGetTurtleToken(t *testing.T) {
 }
 
 func TestNodeBool(t *testing.T) {
-	world := WorldNew()
+	world := NewWorld()
 	defer world.Free()
 
 	bval := world.NewBool(false)

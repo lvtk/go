@@ -29,6 +29,13 @@ func createNodes(managed bool, nodes unsafe.Pointer) *Nodes {
 	}
 	ns := new(Nodes)
 	ns.managed = managed
-	ns.nodes = (*C.LilvNodes)(nodes)
+	ns.nodes = nodes
 	return ns
+}
+
+func createPluginClasses(managed bool, pluginClasses unsafe.Pointer) *PluginClasses {
+	pcs := new(PluginClasses)
+	pcs.pluginClasses = pluginClasses
+	pcs.managed = managed
+	return pcs
 }

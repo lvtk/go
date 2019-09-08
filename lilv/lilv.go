@@ -67,9 +67,9 @@ func ParseFileURI(uri string) (string, string) {
 
 /* World */
 
-// WorldNew - Initialize a new, empty world. If initialization fails, nil is
+// NewWorld - Initialize a new, empty world. If initialization fails, nil is
 // returned.
-func WorldNew() *World {
+func NewWorld() *World {
 	r := new(World)
 	r.world = C.lilv_world_new()
 	return r
@@ -144,11 +144,14 @@ a query (at which time the data is cached with the LilvPlugin so future
 queries are very fast).
 
 The returned list and the plugins it contains are owned by `World`
-and must not be freed by caller.
+and must not be modifed
 */
 func (w *World) GetAllPlugins() *Plugins {
+	if w == nil || w.world == nil {
+		return nil
+	}
 	plugs := new(Plugins)
-	plugs.plugins = (*C.LilvPlugins)(C.lilv_world_get_all_plugins(w.world))
+	plugs.plugins = C.lilv_world_get_all_plugins(w.world)
 	return plugs
 }
 
@@ -160,15 +163,15 @@ func (w *World) GetPluginClasses() *PluginClasses {
 	if w == nil || w.world == nil {
 		return nil
 	}
-	pcs := new(PluginClasses)
-	pcs.pluginClasses = (*C.LilvPluginClasses)(C.lilv_world_get_plugin_classes(w.world))
-	return pcs
+
+	return createPluginClasses(false, C.lilv_world_get_plugin_classes(w.world))
 }
 
 /*
 FindNodes - Find nodes matching a triple pattern.
-Either `subject` or `object` may be NULL (i.e. a wildcard), but not both.
-@return All matches for the wildcard field, or NULL.
+Either `subject` or `object` may be nil (i.e. a wildcard), but not both.
+All matches for the wildcard field, or nil.
+Retured value MUST be freed with Nodes.Free()
 */
 func (w *World) FindNodes(subject *Node, predicate *Node, object *Node) *Nodes {
 	var s *C.LilvNode
@@ -217,7 +220,7 @@ func (w *World) Get(subject *Node, predicate *Node, object *Node) *Node {
 }
 
 /*
-Ask - Return true iff a statement matching a certain pattern exists.
+Ask - Return true if a statement matching a certain pattern exists.
 
 This is useful for checking if particular statement exists without having to
 bother with collections and memory management.

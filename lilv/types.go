@@ -6,16 +6,38 @@ package lilv
 #include <stdlib.h>
 */
 import "C"
+import (
+	"unsafe"
+)
+
+// Plugin - wraps LilvPlugin
+type Plugin struct {
+	plugin *C.LilvPlugin
+}
+
+// PluginClass - wraps LilvPluginClass
+type PluginClass struct {
+	pluginClass *C.LilvPluginClass
+}
+
+// Port - wraps LilvPort
+type Port struct {
+	port *C.LilvPort
+}
+
+// ScalePoint - wraps LilvScalePoint
+type ScalePoint struct {
+	scalePoint *C.LilvScalePoint
+}
+
+// UI - wraps LilvUI
+type UI struct {
+	ui *C.LilvUI
+}
 
 // Node - wraps LilvNode
 type Node struct {
 	node    *C.LilvNode
-	managed bool
-}
-
-// Nodes - wraps LilvNodes
-type Nodes struct {
-	nodes   *C.LilvNodes
 	managed bool
 }
 
@@ -24,47 +46,43 @@ type World struct {
 	world *C.LilvWorld
 }
 
-// Plugin - wraps LilvPlugin
-type Plugin struct {
-	plugin *C.LilvPlugin
+// Instance - wraps LilvInstance
+type Instance struct {
+	instance *C.LilvInstance
 }
 
-// Plugins - wraps LilvPlugins
-type Plugins struct {
-	plugins *C.LilvPlugins
-}
-
-// PluginClass - wraps LilvPluginClass
-type PluginClass struct {
-	pluginClass *C.LilvPluginClass
-}
-
-// PluginClasses - wraps LilvPluginClasses
-type PluginClasses struct {
-	pluginClasses *C.LilvPluginClasses
-	shared        bool
-}
-
-// Port - wraps LilvPort
-type Port struct {
-	port *C.LilvPort
-}
-
-// UI - wraps LilvUI
-type UI struct {
-	ui *C.LilvUI
-}
-
-// UIs - wraps LilvUIs
-type UIs struct {
-	uis    *C.LilvUIs
-	shared bool
+// State - wraps LilvState
+type State struct {
+	instance *C.LilvState
 }
 
 // Iter - alias LilvIter
 type Iter C.LilvIter
 
-// Instance - wraps LilvInstance
-type Instance struct {
-	instance *C.LilvInstance
+// PluginClasses - wraps LilvPluginClasses
+type PluginClasses struct {
+	pluginClasses unsafe.Pointer
+	managed       bool
+}
+
+// Plugins - wraps LilvPlugins
+type Plugins struct {
+	plugins unsafe.Pointer
+}
+
+// ScalePoints - wraps LilvScalePoints
+type ScalePoints struct {
+	scalePoints unsafe.Pointer
+}
+
+// UIs - wraps LilvUIs
+type UIs struct {
+	uis     unsafe.Pointer
+	managed bool
+}
+
+// Nodes - wraps LilvNodes
+type Nodes struct {
+	nodes   unsafe.Pointer
+	managed bool
 }
