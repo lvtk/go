@@ -1,0 +1,3 @@
+[submodule "pugl/src"]
+	path = pugl/src
+	url = https://github.com/lvtk/pugl
