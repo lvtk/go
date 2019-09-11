@@ -16,6 +16,7 @@ import (
 	"github.com/go-gl/gl/v2.1/gl"
 
 	"github.com/lvtk/go/pugl"
+	pgl "github.com/lvtk/go/pugl/gl"
 )
 
 func configure(width, height int32) {
@@ -155,7 +156,7 @@ func main() {
 	view.InitWindowMinSize(256, 256)
 	view.InitWindowHint(pugl.ContextVersionMajor, 2)
 	view.InitWindowHint(pugl.ContextVersionMinor, 1)
-	view.InitBackend(pugl.NewGlBackend())
+	view.InitBackend(pgl.Backend())
 
 	view.InitWindowHint(pugl.Resizable, 1)
 	view.InitWindowHint(pugl.Samples, 2)

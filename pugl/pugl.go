@@ -2,10 +2,9 @@ package pugl
 
 /*
 #cgo CFLAGS: -Isrc -Wno-deprecated-declarations
-#cgo LDFLAGS: -framework Cocoa -framework OpenGL
+#cgo LDFLAGS: -framework Cocoa
 #include <stdlib.h>
 #include "pugl/pugl.h"
-#include "pugl/pugl_gl_backend.h"
 */
 import "C"
 import (
@@ -372,15 +371,6 @@ func (x *View) InitWindowAspectRatio(minX, minY, maxX, maxY int) {
 func (x *View) InitTransientFor(parent uintptr) {
 	C.puglInitTransientFor(x.view, C.uintptr_t(parent))
 }
-
-//-----
-
-// NewGlBackend creates a GL backend
-func NewGlBackend() *Backend {
-	return (*Backend)(C.puglGlBackend())
-}
-
-//-----
 
 // InitBackend - init the backend
 func (x *View) InitBackend(backend *Backend) {
