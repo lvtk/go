@@ -93,15 +93,9 @@ type Event struct {
 // EventFunc - A function called when an event occurs.
 type EventFunc func(view *View, event *Event)
 
-// EventHandler interface
-type EventHandler interface {
-	Process(*Event)
-}
-
 type evMapEntry struct {
 	view     *View
 	callback EventFunc
-	handler  EventHandler
 }
 
 var evMap = make(map[*C.PuglView]*evMapEntry)
@@ -129,11 +123,9 @@ func event_handler_go(view *C.PuglView, event *C.PuglEvent) {
 		ev = new(Event)
 	}
 	ev.update(event)
-	if entry.callback != nil {
+
+	if entry.callback != nil && entry.view != nil {
 		entry.callback(entry.view, ev)
-	}
-	if entry.handler != nil {
-		entry.handler.Process(ev)
 	}
 
 	ev.reset()

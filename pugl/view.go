@@ -84,7 +84,6 @@ func GetProcAddress(name string) unsafe.Pointer {
 }
 
 // CreateWindow makes a window with the settings given by the various pugl.Init functions.
-// @return 1 (pugl does not currently support multiple windows).
 func (x *View) CreateWindow(title string) Status {
 	ctitle := C.CString(title)
 	defer C.free(unsafe.Pointer(ctitle))
@@ -101,6 +100,7 @@ func (x *View) HideWindow() Status {
 	return Status(C.puglHideWindow(x.view))
 }
 
+// SetWindowTitle sets the window title
 func (x *View) SetWindowTitle(title string) Status {
 	ctitle := C.CString(title)
 	defer C.free(unsafe.Pointer(ctitle))
@@ -157,6 +157,7 @@ func (x *View) LeaveContext(drawing bool) {
 	C.puglLeaveContext(x.view, C.bool(drawing))
 }
 
+// WithContext runs a function between enter & exit context
 func (x *View) WithContext(f func(), drawing bool) Status {
 	if f == nil {
 		return Failure
@@ -171,12 +172,6 @@ func (x *View) WithContext(f func(), drawing bool) Status {
 func (x *View) SetEventFunc(callback EventFunc) {
 	entry := x.entry()
 	entry.callback = callback
-}
-
-// SetEventHandler - set callback handler
-func (x *View) SetEventHandler(handler EventHandler) {
-	entry := x.entry()
-	entry.handler = handler
 }
 
 // PostRedisplay request a redisplay on event dispatch.

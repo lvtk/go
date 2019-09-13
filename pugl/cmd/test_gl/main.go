@@ -119,7 +119,7 @@ type testApp struct {
 	quit   bool
 }
 
-func (x *testApp) Process(e *pugl.Event) {
+func (x *testApp) onEvent(view *pugl.View, e *pugl.Event) {
 	if e.Type == pugl.ButtonPress || e.Type == pugl.ButtonRelease {
 		fmt.Println("button event:", e.Button)
 	} else {
@@ -168,7 +168,8 @@ func main() {
 	app.quit = false
 	app.view = view
 
-	view.SetEventHandler(app)
+	view.SetEventFunc(app.onEvent)
+
 	if 0 != view.CreateWindow("Test Window") {
 		os.Exit(1)
 	}
