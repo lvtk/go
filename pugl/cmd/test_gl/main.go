@@ -126,8 +126,9 @@ func (x *testApp) Process(e *pugl.Event) {
 		switch e.Type {
 
 		case pugl.Configure:
-			configure(int32(e.Configure.Width),
-				int32(e.Configure.Height))
+			c := &e.Configure
+			configure(int32(c.Width*c.Scale),
+				int32(c.Height*c.Scale))
 		case pugl.Expose:
 			x.expose()
 		case pugl.Close:
@@ -154,7 +155,7 @@ func main() {
 	}
 
 	world.SetClassName("PuglTest")
-	view.SetFrame(pugl.Rect{512, 512})
+	view.SetFrame(pugl.Rect{0, 0, 512, 512})
 	view.SetMinSize(256, 256)
 	view.SetViewHint(pugl.ContextVersionMajor, 2)
 	view.SetViewHint(pugl.ContextVersionMinor, 1)
