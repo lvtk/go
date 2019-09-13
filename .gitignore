@@ -1,4 +1,5 @@
 
+/app/
 /ui/
 /plugin/
 /test
@@ -10,3 +11,5 @@
 /pugl/src/build/
 /pugl/cmd/test_gl/test_gl
 /pugl/cmd/test_gl3/test_gl3
+/puglgen/
+/lv2gen/
