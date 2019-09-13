@@ -19,7 +19,26 @@ import (
 	pgl "github.com/lvtk/go/pugl/gl"
 )
 
-func configure(width, height int32) {
+type testApp struct {
+	world      *pugl.World
+	view       *pugl.View
+	xAngle     float64
+	yAngle     float64
+	mouseX     float64
+	mouseY     float64
+	quit       bool
+	projection *C.float
+}
+
+func (x *testApp) free() {
+	x.view.Free()
+	x.world.Free()
+	if x.projection != nil {
+		C.free(unsafe.Pointer(x.projection))
+	}
+}
+
+func (x *testApp) configure(width, height int32) {
 	gl.Enable(gl.DEPTH_TEST)
 	gl.DepthFunc(gl.LESS)
 	gl.ClearColor(0.2, 0.2, 0.2, 1.0)
@@ -27,65 +46,18 @@ func configure(width, height int32) {
 	gl.LoadIdentity()
 	gl.Viewport(0, 0, width, height)
 
-	projection := (*C.float)(C.malloc(C.sizeof_float * 16))
-	C.perspective(projection, 1.8,
+	if x.projection == nil {
+		x.projection = (*C.float)(C.malloc(C.sizeof_float * 16))
+	}
+	C.perspective(x.projection, 1.8,
 		C.float(width)/C.float(height), 1.0, 100.0)
-	defer C.free(unsafe.Pointer(projection))
+
 	var gproj [16]float32
 	for i := 0; i < 16; i++ {
-		gproj[i] = float32(C.valuef(projection, C.int(i)))
+		gproj[i] = float32(C.valuef(x.projection, C.int(i)))
 	}
 	gl.LoadMatrixf(&gproj[0])
 }
-
-var gcubeVerticies = []float32{
-	-1.0, -1.0, -1.0,
-	-1.0, -1.0, 1.0,
-	-1.0, 1.0, 1.0,
-
-	1.0, 1.0, -1.0,
-	-1.0, -1.0, -1.0,
-	-1.0, 1.0, -1.0,
-
-	1.0, -1.0, 1.0,
-	-1.0, -1.0, -1.0,
-	1.0, -1.0, -1.0,
-
-	1.0, 1.0, -1.0,
-	1.0, -1.0, -1.0,
-	-1.0, -1.0, -1.0,
-
-	-1.0, -1.0, -1.0,
-	-1.0, 1.0, 1.0,
-	-1.0, 1.0, -1.0,
-
-	1.0, -1.0, 1.0,
-	-1.0, -1.0, 1.0,
-	-1.0, -1.0, -1.0,
-
-	-1.0, 1.0, 1.0,
-	-1.0, -1.0, 1.0,
-	1.0, -1.0, 1.0,
-
-	1.0, 1.0, 1.0,
-	1.0, -1.0, -1.0,
-	1.0, 1.0, -1.0,
-
-	1.0, -1.0, -1.0,
-	1.0, 1.0, 1.0,
-	1.0, -1.0, 1.0,
-
-	1.0, 1.0, 1.0,
-	1.0, 1.0, -1.0,
-	-1.0, 1.0, -1.0,
-
-	1.0, 1.0, 1.0,
-	-1.0, 1.0, -1.0,
-	-1.0, 1.0, 1.0,
-
-	1.0, 1.0, 1.0,
-	-1.0, 1.0, 1.0,
-	1.0, -1.0, 1.0}
 
 func (x *testApp) expose() {
 	gl.MatrixMode(gl.MODELVIEW)
@@ -110,15 +82,6 @@ func (x *testApp) expose() {
 	gl.DisableClientState(gl.COLOR_ARRAY)
 }
 
-type testApp struct {
-	view   *pugl.View
-	xAngle float64
-	yAngle float64
-	mouseX float64
-	mouseY float64
-	quit   bool
-}
-
 func (x *testApp) onEvent(view *pugl.View, e *pugl.Event) {
 	if e.Type == pugl.ButtonPress || e.Type == pugl.ButtonRelease {
 		fmt.Println("button event:", e.Button)
@@ -127,7 +90,7 @@ func (x *testApp) onEvent(view *pugl.View, e *pugl.Event) {
 
 		case pugl.Configure:
 			c := &e.Configure
-			configure(int32(c.Width*c.Scale),
+			x.configure(int32(c.Width*c.Scale),
 				int32(c.Height*c.Scale))
 		case pugl.Expose:
 			x.expose()
@@ -144,45 +107,42 @@ func (x *testApp) onEvent(view *pugl.View, e *pugl.Event) {
 }
 
 func main() {
-	world := pugl.NewWorld()
-	view := world.NewView()
-	defer view.Free()
-	defer world.Free()
+	app := new(testApp)
+	defer app.free()
+	app.quit = false
+	app.world = pugl.NewWorld()
+	app.view = app.world.NewView()
 
-	if view == nil {
+	if app.view == nil {
 		fmt.Println("couldn't init pugl")
 		return
 	}
 
-	world.SetClassName("PuglTest")
-	view.SetFrame(pugl.Rect{0, 0, 512, 512})
-	view.SetMinSize(256, 256)
-	view.SetViewHint(pugl.ContextVersionMajor, 2)
-	view.SetViewHint(pugl.ContextVersionMinor, 1)
-	view.SetBackend(pgl.Backend())
+	app.world.SetClassName("PuglTest")
+	app.view.SetFrame(pugl.Rect{0, 0, 512, 512})
+	app.view.SetMinSize(256, 256)
+	app.view.SetViewHint(pugl.ContextVersionMajor, 2)
+	app.view.SetViewHint(pugl.ContextVersionMinor, 1)
+	app.view.SetBackend(pgl.Backend())
 
-	view.SetViewHint(pugl.Resizable, 1)
-	view.SetViewHint(pugl.Samples, 4)
+	app.view.SetViewHint(pugl.Resizable, 1)
+	app.view.SetViewHint(pugl.Samples, 4)
 
-	app := new(testApp)
-	app.quit = false
-	app.view = view
+	app.view.SetEventFunc(app.onEvent)
 
-	view.SetEventFunc(app.onEvent)
-
-	if 0 != view.CreateWindow("Test Window") {
+	if 0 != app.view.CreateWindow("Test Window") {
 		os.Exit(1)
 	}
 
-	view.WithContext(func() {
+	app.view.WithContext(func() {
 		gl.Init()
 	}, false)
 
-	view.ShowWindow()
+	app.view.ShowWindow()
 
 	for {
-		world.PollEvents(0)
-		world.DispatchEvents()
+		app.world.PollEvents(0)
+		app.world.DispatchEvents()
 		if app.quit {
 			break
 		}
