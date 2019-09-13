@@ -1,12 +1,12 @@
 
 /app/
-/ui/
 /plugin/
 /test
 /test.go
 /go
 /lv2go/
 /.vscode/
+.vscode
 /worker/
 /pugl/src/build/
 /pugl/cmd/test_gl/test_gl
