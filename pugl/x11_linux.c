@@ -28,12 +28,15 @@
 #include "pugl/pugl.h"
 
 #include <X11/X.h>
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 
+#include <sys/select.h>
 #include <sys/time.h>
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -60,22 +63,21 @@ static const long eventMask =
 	 EnterWindowMask | LeaveWindowMask | PointerMotionMask |
 	 ButtonPressMask | ButtonReleaseMask | KeyPressMask | KeyReleaseMask);
 
-PuglInternals*
-puglInitInternals(void)
+PuglWorldInternals*
+puglInitWorldInternals(void)
 {
-	return (PuglInternals*)calloc(1, sizeof(PuglInternals));
-}
+	Display* display = XOpenDisplay(NULL);
+	if (!display) {
+		return NULL;
+	}
 
-int
-puglCreateWindow(PuglView* view, const char* title)
-{
-	PuglInternals* const impl    = view->impl;
-	Display* const       display = XOpenDisplay(0);
+	PuglWorldInternals* impl = (PuglWorldInternals*)calloc(
+		1, sizeof(PuglWorldInternals));
 
 	impl->display = display;
-	impl->screen  = DefaultScreen(display);
 
 	// Intern the various atoms we will need
+	impl->atoms.CLIPBOARD        = XInternAtom(display, "CLIPBOARD", 0);
 	impl->atoms.UTF8_STRING      = XInternAtom(display, "UTF8_STRING", 0);
 	impl->atoms.WM_PROTOCOLS     = XInternAtom(display, "WM_PROTOCOLS", 0);
 	impl->atoms.WM_DELETE_WINDOW = XInternAtom(display, "WM_DELETE_WINDOW", 0);
@@ -84,11 +86,113 @@ puglCreateWindow(PuglView* view, const char* title)
 	impl->atoms.NET_WM_STATE_DEMANDS_ATTENTION =
 		XInternAtom(display, "_NET_WM_STATE_DEMANDS_ATTENTION", 0);
 
+	// Open input method
+	XSetLocaleModifiers("");
+	if (!(impl->xim = XOpenIM(display, NULL, NULL, NULL))) {
+		XSetLocaleModifiers("@im=");
+		if (!(impl->xim = XOpenIM(display, NULL, NULL, NULL))) {
+			fprintf(stderr, "warning: XOpenIM failed\n");
+		}
+	}
+
+	XFlush(display);
+
+	return impl;
+}
+
+PuglInternals*
+puglInitViewInternals(void)
+{
+	return (PuglInternals*)calloc(1, sizeof(PuglInternals));
+}
+
+PuglStatus
+puglPollEvents(PuglWorld* world, const double timeout)
+{
+	XFlush(world->impl->display);
+
+	const int fd   = ConnectionNumber(world->impl->display);
+	const int nfds = fd + 1;
+	int       ret  = 0;
+	fd_set    fds;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+
+	if (timeout < 0.0) {
+		ret = select(nfds, &fds, NULL, NULL, NULL);
+	} else {
+		const long     sec  = (long)timeout;
+		const long     msec = (long)((timeout - (double)sec) * 1e6);
+		struct timeval tv   = {sec, msec};
+		ret = select(nfds, &fds, NULL, NULL, &tv);
+	}
+
+	return ret < 0 ? PUGL_UNKNOWN_ERROR
+	               : ret == 0 ? PUGL_FAILURE : PUGL_SUCCESS;
+}
+
+static PuglView*
+puglFindView(PuglWorld* world, const Window window)
+{
+	for (size_t i = 0; i < world->numViews; ++i) {
+		if (world->views[i]->impl->win == window) {
+			return world->views[i];
+		}
+	}
+
+	return NULL;
+}
+
+static XSizeHints
+getSizeHints(const PuglView* view)
+{
+	XSizeHints sizeHints = {0};
+
+	if (!view->hints[PUGL_RESIZABLE]) {
+		sizeHints.flags      = PMinSize|PMaxSize;
+		sizeHints.min_width  = (int)view->frame.width;
+		sizeHints.min_height = (int)view->frame.height;
+		sizeHints.max_width  = (int)view->frame.width;
+		sizeHints.max_height = (int)view->frame.height;
+	} else {
+		if (view->minWidth || view->minHeight) {
+			sizeHints.flags      = PMinSize;
+			sizeHints.min_width  = view->minWidth;
+			sizeHints.min_height = view->minHeight;
+		}
+		if (view->minAspectX) {
+			sizeHints.flags        |= PAspect;
+			sizeHints.min_aspect.x  = view->minAspectX;
+			sizeHints.min_aspect.y  = view->minAspectY;
+			sizeHints.max_aspect.x  = view->maxAspectX;
+			sizeHints.max_aspect.y  = view->maxAspectY;
+		}
+	}
+
+	return sizeHints;
+}
+
+PuglStatus
+puglCreateWindow(PuglView* view, const char* title)
+{
+	PuglInternals* const impl    = view->impl;
+	PuglWorld* const     world   = view->world;
+	PuglX11Atoms* const  atoms   = &view->world->impl->atoms;
+	Display* const       display = world->impl->display;
+	const int            width   = (int)view->frame.width;
+	const int            height  = (int)view->frame.height;
+
+	impl->display = display;
+	impl->screen  = DefaultScreen(display);
+
 	if (!view->backend || !view->backend->configure) {
-		return 1;
-	} else if (view->backend->configure(view) || !impl->vi) {
+		return PUGL_BAD_BACKEND;
+	}
+
+	PuglStatus st = view->backend->configure(view);
+	if (st || !impl->vi) {
 		view->backend->destroy(view);
-		return 2;
+		return st ? st : PUGL_BACKEND_FAILED;
 	}
 
 	Window xParent = view->parent ? (Window)view->parent
@@ -103,61 +207,35 @@ puglCreateWindow(PuglView* view, const char* title)
 
 	const Window win = impl->win = XCreateWindow(
 		display, xParent,
-		0, 0, view->width, view->height, 0, impl->vi->depth, InputOutput,
+		(int)view->frame.x, (int)view->frame.y, width, height,
+		0, impl->vi->depth, InputOutput,
 		impl->vi->visual, CWColormap | CWEventMask, &attr);
 
-	if (view->backend->create(view)) {
-		return 3;
+	if ((st = view->backend->create(view))) {
+		return st;
 	}
 
-	XSizeHints sizeHints = {0};
-	if (!view->hints.resizable) {
-		sizeHints.flags      = PMinSize|PMaxSize;
-		sizeHints.min_width  = view->width;
-		sizeHints.min_height = view->height;
-		sizeHints.max_width  = view->width;
-		sizeHints.max_height = view->height;
-	} else {
-		if (view->min_width || view->min_height) {
-			sizeHints.flags      = PMinSize;
-			sizeHints.min_width  = view->min_width;
-			sizeHints.min_height = view->min_height;
-		}
-		if (view->min_aspect_x) {
-			sizeHints.flags        |= PAspect;
-			sizeHints.min_aspect.x  = view->min_aspect_x;
-			sizeHints.min_aspect.y  = view->min_aspect_y;
-			sizeHints.max_aspect.x  = view->max_aspect_x;
-			sizeHints.max_aspect.y  = view->max_aspect_y;
-		}
-	}
+	XSizeHints sizeHints = getSizeHints(view);
 	XSetNormalHints(display, win, &sizeHints);
 
+	XClassHint classHint = { world->className, world->className };
+	XSetClassHint(display, win, &classHint);
+
 	if (title) {
-		XStoreName(display, win, title);
-		XChangeProperty(display, win,
-		                impl->atoms.NET_WM_NAME, impl->atoms.UTF8_STRING, 8,
-		                PropModeReplace, (const uint8_t*)title, strlen(title));
+		puglSetWindowTitle(view, title);
 	}
 
 	if (!view->parent) {
-		XSetWMProtocols(display, win, &view->impl->atoms.WM_DELETE_WINDOW, 1);
+		XSetWMProtocols(display, win, &atoms->WM_DELETE_WINDOW, 1);
 	}
 
-	if (view->transient_parent) {
-		XSetTransientForHint(display, win, (Window)(view->transient_parent));
+	if (view->transientParent) {
+		XSetTransientForHint(display, win, (Window)(view->transientParent));
 	}
 
-	XSetLocaleModifiers("");
-	if (!(impl->xim = XOpenIM(display, NULL, NULL, NULL))) {
-		XSetLocaleModifiers("@im=");
-		if (!(impl->xim = XOpenIM(display, NULL, NULL, NULL))) {
-			fprintf(stderr, "warning: XOpenIM failed\n");
-		}
-	}
-
+	// Create input context
 	const XIMStyle im_style = XIMPreeditNothing | XIMStatusNothing;
-	if (!(impl->xic = XCreateIC(impl->xim,
+	if (!(impl->xic = XCreateIC(world->impl->xim,
 	                            XNInputStyle,   im_style,
 	                            XNClientWindow, win,
 	                            XNFocusWindow,  win,
@@ -165,41 +243,48 @@ puglCreateWindow(PuglView* view, const char* title)
 		fprintf(stderr, "warning: XCreateIC failed\n");
 	}
 
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-void
+PuglStatus
 puglShowWindow(PuglView* view)
 {
 	XMapRaised(view->impl->display, view->impl->win);
+	puglPostRedisplay(view);
 	view->visible = true;
+	return PUGL_SUCCESS;
 }
 
-void
+PuglStatus
 puglHideWindow(PuglView* view)
 {
 	XUnmapWindow(view->impl->display, view->impl->win);
 	view->visible = false;
+	return PUGL_SUCCESS;
 }
 
 void
-puglDestroy(PuglView* view)
+puglFreeViewInternals(PuglView* view)
 {
 	if (view) {
 		if (view->impl->xic) {
 			XDestroyIC(view->impl->xic);
 		}
-		if (view->impl->xim) {
-			XCloseIM(view->impl->xim);
-		}
 		view->backend->destroy(view);
 		XDestroyWindow(view->impl->display, view->impl->win);
-		XCloseDisplay(view->impl->display);
 		XFree(view->impl->vi);
-		free(view->windowClass);
 		free(view->impl);
-		free(view);
 	}
+}
+
+void
+puglFreeWorldInternals(PuglWorld* world)
+{
+	if (world->impl->xim) {
+		XCloseIM(world->impl->xim);
+	}
+	XCloseDisplay(world->impl->display);
+	free(world->impl);
 }
 
 static PuglKey
@@ -310,14 +395,16 @@ translateModifiers(const unsigned xstate)
 static PuglEvent
 translateEvent(PuglView* view, XEvent xevent)
 {
+	const PuglX11Atoms* atoms = &view->world->impl->atoms;
+
 	PuglEvent event = {0};
 	event.any.flags = xevent.xany.send_event ? PUGL_IS_SEND_EVENT : 0;
 
 	switch (xevent.type) {
 	case ClientMessage:
-		if (xevent.xclient.message_type == view->impl->atoms.WM_PROTOCOLS) {
+		if (xevent.xclient.message_type == atoms->WM_PROTOCOLS) {
 			const Atom protocol = (Atom)xevent.xclient.data.l[0];
-			if (protocol == view->impl->atoms.WM_DELETE_WINDOW) {
+			if (protocol == atoms->WM_DELETE_WINDOW) {
 				event.type = PUGL_CLOSE;
 			}
 		}
@@ -352,10 +439,10 @@ translateEvent(PuglView* view, XEvent xevent)
 		event.motion.time    = xevent.xmotion.time / 1e3;
 		event.motion.x       = xevent.xmotion.x;
 		event.motion.y       = xevent.xmotion.y;
-		event.motion.x_root  = xevent.xmotion.x_root;
-		event.motion.y_root  = xevent.xmotion.y_root;
+		event.motion.xRoot   = xevent.xmotion.x_root;
+		event.motion.yRoot   = xevent.xmotion.y_root;
 		event.motion.state   = translateModifiers(xevent.xmotion.state);
-		event.motion.is_hint = (xevent.xmotion.is_hint == NotifyHint);
+		event.motion.isHint  = (xevent.xmotion.is_hint == NotifyHint);
 		break;
 	case ButtonPress:
 		if (xevent.xbutton.button >= 4 && xevent.xbutton.button <= 7) {
@@ -363,8 +450,8 @@ translateEvent(PuglView* view, XEvent xevent)
 			event.scroll.time    = xevent.xbutton.time / 1e3;
 			event.scroll.x       = xevent.xbutton.x;
 			event.scroll.y       = xevent.xbutton.y;
-			event.scroll.x_root  = xevent.xbutton.x_root;
-			event.scroll.y_root  = xevent.xbutton.y_root;
+			event.scroll.xRoot   = xevent.xbutton.x_root;
+			event.scroll.yRoot   = xevent.xbutton.y_root;
 			event.scroll.state   = translateModifiers(xevent.xbutton.state);
 			event.scroll.dx      = 0.0;
 			event.scroll.dy      = 0.0;
@@ -385,8 +472,8 @@ translateEvent(PuglView* view, XEvent xevent)
 			event.button.time   = xevent.xbutton.time / 1e3;
 			event.button.x      = xevent.xbutton.x;
 			event.button.y      = xevent.xbutton.y;
-			event.button.x_root = xevent.xbutton.x_root;
-			event.button.y_root = xevent.xbutton.y_root;
+			event.button.xRoot  = xevent.xbutton.x_root;
+			event.button.yRoot  = xevent.xbutton.y_root;
 			event.button.state  = translateModifiers(xevent.xbutton.state);
 			event.button.button = xevent.xbutton.button;
 		}
@@ -399,8 +486,8 @@ translateEvent(PuglView* view, XEvent xevent)
 		event.key.time   = xevent.xkey.time / 1e3;
 		event.key.x      = xevent.xkey.x;
 		event.key.y      = xevent.xkey.y;
-		event.key.x_root = xevent.xkey.x_root;
-		event.key.y_root = xevent.xkey.y_root;
+		event.key.xRoot  = xevent.xkey.x_root;
+		event.key.yRoot  = xevent.xkey.y_root;
 		event.key.state  = translateModifiers(xevent.xkey.state);
 		translateKey(view, &xevent, &event);
 		break;
@@ -412,8 +499,8 @@ translateEvent(PuglView* view, XEvent xevent)
 		event.crossing.time   = xevent.xcrossing.time / 1e3;
 		event.crossing.x      = xevent.xcrossing.x;
 		event.crossing.y      = xevent.xcrossing.y;
-		event.crossing.x_root = xevent.xcrossing.x_root;
-		event.crossing.y_root = xevent.xcrossing.y_root;
+		event.crossing.xRoot  = xevent.xcrossing.x_root;
+		event.crossing.yRoot  = xevent.xcrossing.y_root;
 		event.crossing.state  = translateModifiers(xevent.xcrossing.state);
 		event.crossing.mode   = PUGL_CROSSING_NORMAL;
 		if (xevent.xcrossing.mode == NotifyGrab) {
@@ -436,24 +523,36 @@ translateEvent(PuglView* view, XEvent xevent)
 	return event;
 }
 
-void
+PuglStatus
 puglGrabFocus(PuglView* view)
 {
 	XSetInputFocus(
-		view->impl->display, view->impl->win, RevertToPointerRoot, CurrentTime);
+		view->impl->display, view->impl->win, RevertToNone, CurrentTime);
+	return PUGL_SUCCESS;
 }
 
-void
+bool
+puglHasFocus(const PuglView* view)
+{
+	int    revertTo      = 0;
+	Window focusedWindow = 0;
+	XGetInputFocus(view->impl->display, &focusedWindow, &revertTo);
+	return focusedWindow == view->impl->win;
+}
+
+PuglStatus
 puglRequestAttention(PuglView* view)
 {
-	PuglInternals* const impl  = view->impl;
-	XEvent               event = {0};
+	PuglInternals* const      impl  = view->impl;
+	const PuglX11Atoms* const atoms = &view->world->impl->atoms;
+	XEvent                    event = {0};
+
 	event.type                 = ClientMessage;
 	event.xclient.window       = impl->win;
 	event.xclient.format       = 32;
-	event.xclient.message_type = impl->atoms.NET_WM_STATE;
+	event.xclient.message_type = atoms->NET_WM_STATE;
 	event.xclient.data.l[0]    = WM_STATE_ADD;
-	event.xclient.data.l[1]    = impl->atoms.NET_WM_STATE_DEMANDS_ATTENTION;
+	event.xclient.data.l[1]    = atoms->NET_WM_STATE_DEMANDS_ATTENTION;
 	event.xclient.data.l[2]    = 0;
 	event.xclient.data.l[3]    = 1;
 	event.xclient.data.l[4]    = 0;
@@ -464,6 +563,8 @@ puglRequestAttention(PuglView* view)
 	           False,
 	           SubstructureNotifyMask | SubstructureRedirectMask,
 	           &event);
+
+	return PUGL_SUCCESS;
 }
 
 PuglStatus
@@ -493,35 +594,106 @@ merge_expose_events(PuglEvent* dst, const PuglEvent* src)
 	}
 }
 
-PuglStatus
-puglProcessEvents(PuglView* view)
+static void
+sendRedisplayEvent(PuglView* view)
 {
-	/* Maintain a single expose/configure event to execute after all pending
-	   events.  This avoids redundant drawing/configuration which prevents a
-	   series of window resizes in the same loop from being laggy. */
-	PuglInternals* const impl         = view->impl;
-	PuglEvent            expose_event = { 0 };
-	PuglEvent            config_event = { 0 };
-	XEvent               xevent;
-	while (XPending(impl->display) > 0) {
-		XNextEvent(impl->display, &xevent);
-		if (xevent.type == KeyRelease) {
-			// Ignore key repeat if necessary
-			if (view->hints.ignoreKeyRepeat &&
-			    XEventsQueued(impl->display, QueuedAfterReading)) {
-				XEvent next;
-				XPeekEvent(impl->display, &next);
-				if (next.type == KeyPress &&
-				    next.xkey.time == xevent.xkey.time &&
-				    next.xkey.keycode == xevent.xkey.keycode) {
-					XNextEvent(impl->display, &xevent);
-					continue;
-				}
+	XExposeEvent ev = { Expose, 0, True, view->impl->display, view->impl->win,
+	                    0, 0, (int)view->frame.width, (int)view->frame.height,
+	                    0 };
+
+	XSendEvent(view->impl->display, view->impl->win, False, 0, (XEvent*)&ev);
+}
+
+PUGL_API PuglStatus
+puglDispatchEvents(PuglWorld* world)
+{
+	const PuglX11Atoms* const atoms = &world->impl->atoms;
+
+	// Send expose events for any views with pending redisplays
+	for (size_t i = 0; i < world->numViews; ++i) {
+		if (world->views[i]->redisplay) {
+			sendRedisplayEvent(world->views[i]);
+			world->views[i]->redisplay = false;
+		}
+	}
+
+	// Flush just once at the start to fill event queue
+	Display* display = world->impl->display;
+	XFlush(display);
+
+	// Process all queued events (locally, without flushing or reading)
+	while (XEventsQueued(display, QueuedAlready) > 0) {
+		XEvent xevent;
+		XNextEvent(display, &xevent);
+
+		PuglView* view = puglFindView(world, xevent.xany.window);
+		if (!view) {
+			continue;
+		}
+
+		// Handle special events
+		PuglInternals* const impl = view->impl;
+		if (xevent.type == KeyRelease && view->hints[PUGL_IGNORE_KEY_REPEAT]) {
+			XEvent next;
+			if (XCheckTypedWindowEvent(display, impl->win, KeyPress, &next) &&
+			    next.type == KeyPress &&
+			    next.xkey.time == xevent.xkey.time &&
+			    next.xkey.keycode == xevent.xkey.keycode) {
+				continue;
 			}
 		} else if (xevent.type == FocusIn) {
 			XSetICFocus(impl->xic);
 		} else if (xevent.type == FocusOut) {
 			XUnsetICFocus(impl->xic);
+		} else if (xevent.type == SelectionClear) {
+			puglSetBlob(&view->clipboard, NULL, 0);
+			continue;
+		} else if (xevent.type == SelectionNotify &&
+		           xevent.xselection.selection == atoms->CLIPBOARD &&
+		           xevent.xselection.target == atoms->UTF8_STRING &&
+		           xevent.xselection.property == XA_PRIMARY) {
+
+			uint8_t*      str  = NULL;
+			Atom          type = 0;
+			int           fmt  = 0;
+			unsigned long len  = 0;
+			unsigned long left = 0;
+			XGetWindowProperty(impl->display, impl->win, XA_PRIMARY,
+			                   0, 8, False, AnyPropertyType,
+			                   &type, &fmt, &len, &left, &str);
+
+			if (str && fmt == 8 && type == atoms->UTF8_STRING && left == 0) {
+				puglSetBlob(&view->clipboard, str, len);
+			}
+
+			XFree(str);
+			continue;
+		} else if (xevent.type == SelectionRequest) {
+			const XSelectionRequestEvent* request = &xevent.xselectionrequest;
+
+			XSelectionEvent note = {0};
+			note.type            = SelectionNotify;
+			note.requestor       = request->requestor;
+			note.selection       = request->selection;
+			note.target          = request->target;
+			note.time            = request->time;
+
+			const char* type = NULL;
+			size_t      len  = 0;
+			const void* data = puglGetInternalClipboard(view, &type, &len);
+			if (data &&
+			    request->selection == atoms->CLIPBOARD &&
+			    request->target == atoms->UTF8_STRING) {
+				note.property = request->property;
+				XChangeProperty(impl->display, note.requestor,
+				                note.property, note.target, 8, PropModeReplace,
+				                (const uint8_t*)data, len);
+			} else {
+				note.property = None;
+			}
+
+			XSendEvent(impl->display, note.requestor, True, 0, (XEvent*)&note);
+			continue;
 		}
 
 		// Translate X11 event to Pugl event
@@ -529,60 +701,206 @@ puglProcessEvents(PuglView* view)
 
 		if (event.type == PUGL_EXPOSE) {
 			// Expand expose event to be dispatched after loop
-			merge_expose_events(&expose_event, &event);
+			merge_expose_events(&view->impl->pendingExpose, &event);
 		} else if (event.type == PUGL_CONFIGURE) {
 			// Expand configure event to be dispatched after loop
-			config_event = event;
+			view->impl->pendingConfigure = event;
 		} else {
 			// Dispatch event to application immediately
 			puglDispatchEvent(view, &event);
 		}
 	}
 
-	if (config_event.type || expose_event.type) {
-		const bool draw = expose_event.type && expose_event.expose.count == 0;
+	// Flush pending configure and expose events for all views
+	for (size_t i = 0; i < world->numViews; ++i) {
+		PuglView* const  view      = world->views[i];
+		PuglEvent* const configure = &view->impl->pendingConfigure;
+		PuglEvent* const expose    = &view->impl->pendingExpose;
 
-		puglEnterContext(view, draw);
+		if (configure->type || expose->type) {
+			const bool mustExpose = expose->type && expose->expose.count == 0;
+			puglEnterContext(view, mustExpose);
 
-		if (config_event.type) {
-			view->width  = (int)config_event.configure.width;
-			view->height = (int)config_event.configure.height;
-			view->backend->resize(view, view->width, view->height);
-			view->eventFunc(view, (const PuglEvent*)&config_event);
+			if (configure->type) {
+				view->frame.x      = configure->configure.x;
+				view->frame.y      = configure->configure.y;
+				view->frame.width  = configure->configure.width;
+				view->frame.height = configure->configure.height;
+
+				view->backend->resize(view,
+				                      (int)view->frame.width,
+				                      (int)view->frame.height);
+				view->eventFunc(view, &view->impl->pendingConfigure);
+			}
+
+			if (mustExpose) {
+				view->eventFunc(view, &view->impl->pendingExpose);
+			}
+
+			puglLeaveContext(view, mustExpose);
+			configure->type = 0;
+			expose->type    = 0;
 		}
-
-		if (draw) {
-			view->eventFunc(view, (const PuglEvent*)&expose_event);
-		}
-
-		puglLeaveContext(view, draw);
 	}
 
 	return PUGL_SUCCESS;
 }
 
+PuglStatus
+puglProcessEvents(PuglView* view)
+{
+	return puglDispatchEvents(view->world);
+}
+
 double
-puglGetTime(PuglView* view)
+puglGetTime(const PuglWorld* world)
 {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ((double)ts.tv_sec + ts.tv_nsec / 1000000000.0) - view->start_time;
+	return ((double)ts.tv_sec + ts.tv_nsec / 1000000000.0) - world->startTime;
 }
 
-void
+PuglStatus
 puglPostRedisplay(PuglView* view)
 {
-	XExposeEvent ev = {Expose, 0, True,
-	                   view->impl->display, view->impl->win,
-	                   0, 0,
-	                   view->width, view->height,
-	                   0};
-
-	XSendEvent(view->impl->display, view->impl->win, False, 0, (XEvent*)&ev);
+	view->redisplay = true;
+	return PUGL_SUCCESS;
 }
 
 PuglNativeWindow
 puglGetNativeWindow(PuglView* view)
 {
 	return (PuglNativeWindow)view->impl->win;
+}
+
+PuglStatus
+puglSetWindowTitle(PuglView* view, const char* title)
+{
+	Display*                  display = view->world->impl->display;
+	const PuglX11Atoms* const atoms   = &view->world->impl->atoms;
+
+	puglSetString(&view->title, title);
+	XStoreName(display, view->impl->win, title);
+	XChangeProperty(display, view->impl->win, atoms->NET_WM_NAME,
+	                atoms->UTF8_STRING, 8, PropModeReplace,
+	                (const uint8_t*)title, (int)strlen(title));
+
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetFrame(PuglView* view, const PuglRect frame)
+{
+	view->frame = frame;
+
+	if (view->impl->win &&
+	    XMoveResizeWindow(view->world->impl->display, view->impl->win,
+	                      (int)frame.x, (int)frame.y,
+	                      (int)frame.width, (int)frame.height)) {
+		return PUGL_UNKNOWN_ERROR;
+	}
+
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetMinSize(PuglView* const view, const int width, const int height)
+{
+	Display* display = view->world->impl->display;
+
+	view->minWidth  = width;
+	view->minHeight = height;
+
+	if (view->impl->win) {
+		XSizeHints sizeHints = getSizeHints(view);
+		XSetNormalHints(display, view->impl->win, &sizeHints);
+	}
+
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetAspectRatio(PuglView* const view,
+                   const int       minX,
+                   const int       minY,
+                   const int       maxX,
+                   const int       maxY)
+{
+	Display* display = view->world->impl->display;
+
+	view->minAspectX = minX;
+	view->minAspectY = minY;
+	view->maxAspectX = maxX;
+	view->maxAspectY = maxY;
+
+	if (view->impl->win) {
+		XSizeHints sizeHints = getSizeHints(view);
+		XSetNormalHints(display, view->impl->win, &sizeHints);
+	}
+
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetTransientFor(PuglView* view, PuglNativeWindow parent)
+{
+	Display* display = view->world->impl->display;
+
+	view->transientParent = parent;
+
+	if (view->impl->win) {
+		XSetTransientForHint(display, view->impl->win,
+		                     (Window)view->transientParent);
+	}
+
+	return PUGL_SUCCESS;
+}
+
+const void*
+puglGetClipboard(PuglView* const    view,
+                 const char** const type,
+                 size_t* const      len)
+{
+	PuglInternals* const      impl  = view->impl;
+	const PuglX11Atoms* const atoms = &view->world->impl->atoms;
+
+	const Window owner = XGetSelectionOwner(impl->display, atoms->CLIPBOARD);
+	if (owner != None && owner != impl->win) {
+		// Clear internal selection
+		puglSetBlob(&view->clipboard, NULL, 0);
+
+		// Request selection from the owner
+		XConvertSelection(impl->display,
+		                  atoms->CLIPBOARD,
+		                  atoms->UTF8_STRING,
+		                  XA_PRIMARY,
+		                  impl->win,
+		                  CurrentTime);
+
+		// Run event loop until data is received
+		while (!view->clipboard.data) {
+			puglPollEvents(view->world, -1);
+			puglDispatchEvents(view->world);
+		}
+	}
+
+	return puglGetInternalClipboard(view, type, len);
+}
+
+PuglStatus
+puglSetClipboard(PuglView* const   view,
+                 const char* const type,
+                 const void* const data,
+                 const size_t      len)
+{
+	PuglInternals* const      impl  = view->impl;
+	const PuglX11Atoms* const atoms = &view->world->impl->atoms;
+
+	PuglStatus st = puglSetInternalClipboard(view, type, data, len);
+	if (st) {
+		return st;
+	}
+
+	XSetSelectionOwner(impl->display, atoms->CLIPBOARD, impl->win, CurrentTime);
+	return PUGL_SUCCESS;
 }

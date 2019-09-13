@@ -2,7 +2,7 @@ package gl
 
 /*
 #cgo CFLAGS: -I../src
-#cgo LDFLAGS: -framework Cocoa -framework OpenGL
+#cgo darwin LDFLAGS: -framework Cocoa -framework OpenGL
 #include "pugl/pugl_gl_backend.h"
 */
 import "C"

@@ -25,144 +25,154 @@
 #include <stdlib.h>
 #include <string.h>
 
-static PuglHints
-puglDefaultHints(void)
+void
+puglSetString(char** dest, const char* string)
 {
-	static const PuglHints hints = {
-		2, 0, 4, 4, 4, 4, 24, 8, 0, true, true, false, false
-	};
-	return hints;
+	const size_t len = strlen(string);
+
+	*dest = (char*)realloc(*dest, len + 1);
+	strncpy(*dest, string, len + 1);
 }
 
-PuglView*
-puglInit(int* PUGL_UNUSED(pargc), char** PUGL_UNUSED(argv))
+void
+puglSetBlob(PuglBlob* const dest, const void* const data, const size_t len)
 {
-	PuglView* view = (PuglView*)calloc(1, sizeof(PuglView));
-	if (!view) {
+	if (data) {
+		dest->len  = len;
+		dest->data = realloc(dest->data, len + 1);
+		memcpy(dest->data, data, len);
+		((char*)dest->data)[len] = 0;
+	} else {
+		dest->len  = 0;
+		dest->data = NULL;
+	}
+}
+
+static void
+puglSetDefaultHints(PuglHints hints)
+{
+	hints[PUGL_USE_COMPAT_PROFILE]    = PUGL_TRUE;
+	hints[PUGL_CONTEXT_VERSION_MAJOR] = 2;
+	hints[PUGL_CONTEXT_VERSION_MINOR] = 0;
+	hints[PUGL_RED_BITS]              = 4;
+	hints[PUGL_GREEN_BITS]            = 4;
+	hints[PUGL_BLUE_BITS]             = 4;
+	hints[PUGL_ALPHA_BITS]            = 4;
+	hints[PUGL_DEPTH_BITS]            = 24;
+	hints[PUGL_STENCIL_BITS]          = 8;
+	hints[PUGL_SAMPLES]               = 0;
+	hints[PUGL_DOUBLE_BUFFER]         = PUGL_FALSE;
+	hints[PUGL_SWAP_INTERVAL]         = 0;
+	hints[PUGL_RESIZABLE]             = PUGL_FALSE;
+	hints[PUGL_IGNORE_KEY_REPEAT]     = PUGL_FALSE;
+}
+
+PuglWorld*
+puglNewWorld(void)
+{
+	PuglWorld* world = (PuglWorld*)calloc(1, sizeof(PuglWorld));
+	if (!world || !(world->impl = puglInitWorldInternals())) {
+		free(world);
 		return NULL;
 	}
 
-	PuglInternals* impl = puglInitInternals();
-	if (!impl) {
+	world->startTime = puglGetTime(world);
+	puglSetString(&world->className, "Pugl");
+
+	return world;
+}
+
+void
+puglFreeWorld(PuglWorld* const world)
+{
+	puglFreeWorldInternals(world);
+	free(world->className);
+	free(world->views);
+	free(world);
+}
+
+PuglStatus
+puglSetClassName(PuglWorld* const world, const char* const name)
+{
+	puglSetString(&world->className, name);
+	return PUGL_SUCCESS;
+}
+
+PuglView*
+puglNewView(PuglWorld* const world)
+{
+	PuglView* view = (PuglView*)calloc(1, sizeof(PuglView));
+	if (!view || !(view->impl = puglInitViewInternals())) {
 		free(view);
 		return NULL;
 	}
 
-	view->hints      = puglDefaultHints();
-	view->impl       = impl;
-	view->width      = 640;
-	view->height     = 480;
-	view->start_time = puglGetTime(view);
+	view->world        = world;
+	view->frame.width  = 640;
+	view->frame.height = 480;
+
+	puglSetDefaultHints(view->hints);
+
+	// Add to world view list
+	++world->numViews;
+	world->views = (PuglView**)realloc(world->views,
+	                                   world->numViews * sizeof(PuglView*));
+	world->views[world->numViews - 1] = view;
 
 	return view;
 }
 
 void
-puglInitWindowHint(PuglView* view, PuglWindowHint hint, int value)
+puglFreeView(PuglView* view)
 {
-	switch (hint) {
-	case PUGL_USE_COMPAT_PROFILE:
-		view->hints.use_compat_profile = value;
-		break;
-	case PUGL_CONTEXT_VERSION_MAJOR:
-		view->hints.context_version_major = value;
-		break;
-	case PUGL_CONTEXT_VERSION_MINOR:
-		view->hints.context_version_minor = value;
-		break;
-	case PUGL_RED_BITS:
-		view->hints.red_bits = value;
-		break;
-	case PUGL_GREEN_BITS:
-		view->hints.green_bits = value;
-		break;
-	case PUGL_BLUE_BITS:
-		view->hints.blue_bits = value;
-		break;
-	case PUGL_ALPHA_BITS:
-		view->hints.alpha_bits = value;
-		break;
-	case PUGL_DEPTH_BITS:
-		view->hints.depth_bits = value;
-		break;
-	case PUGL_STENCIL_BITS:
-		view->hints.stencil_bits = value;
-		break;
-	case PUGL_SAMPLES:
-		view->hints.samples = value;
-		break;
-	case PUGL_DOUBLE_BUFFER:
-		view->hints.double_buffer = value;
-		break;
-	case PUGL_RESIZABLE:
-		view->hints.resizable = value;
-		break;
-	case PUGL_IGNORE_KEY_REPEAT:
-		view->hints.ignoreKeyRepeat = value;
-		break;
+	// Remove from world view list
+	PuglWorld* world = view->world;
+	for (size_t i = 0; i < world->numViews; ++i) {
+		if (world->views[i] == view) {
+			if (i == world->numViews - 1) {
+				world->views[i] = NULL;
+			} else {
+				memmove(world->views + i, world->views + i + 1,
+				        sizeof(PuglView*) * (world->numViews - i - 1));
+				world->views[world->numViews - 1] = NULL;
+			}
+			--world->numViews;
+		}
 	}
+
+	free(view->clipboard.data);
+	puglFreeViewInternals(view);
+	free(view);
 }
 
-void
-puglInitWindowSize(PuglView* view, int width, int height)
+PuglWorld*
+puglGetWorld(PuglView* view)
 {
-	view->width  = width;
-	view->height = height;
+	return view->world;
 }
 
-void
-puglInitWindowMinSize(PuglView* view, int width, int height)
+PuglStatus
+puglSetViewHint(PuglView* view, PuglViewHint hint, int value)
 {
-	view->min_width  = width;
-	view->min_height = height;
+	if (hint < PUGL_NUM_WINDOW_HINTS) {
+		view->hints[hint] = value;
+	}
+
+	return PUGL_SUCCESS;
 }
 
-void
-puglInitWindowAspectRatio(PuglView* view,
-                          int       min_x,
-                          int       min_y,
-                          int       max_x,
-                          int       max_y)
-{
-	view->min_aspect_x = min_x;
-	view->min_aspect_y = min_y;
-	view->max_aspect_x = max_x;
-	view->max_aspect_y = max_y;
-}
-
-void
-puglInitWindowClass(PuglView* view, const char* name)
-{
-	const size_t len = strlen(name);
-
-	free(view->windowClass);
-	view->windowClass = (char*)calloc(1, len + 1);
-	memcpy(view->windowClass, name, len);
-}
-
-void
-puglInitWindowParent(PuglView* view, PuglNativeWindow parent)
+PuglStatus
+puglSetParentWindow(PuglView* view, PuglNativeWindow parent)
 {
 	view->parent = parent;
+	return PUGL_SUCCESS;
 }
 
-void
-puglInitResizable(PuglView* view, bool resizable)
-{
-	view->hints.resizable = resizable;
-}
-
-void
-puglInitTransientFor(PuglView* view, uintptr_t parent)
-{
-	view->transient_parent = parent;
-}
-
-int
-puglInitBackend(PuglView* view, const PuglBackend* backend)
+PuglStatus
+puglSetBackend(PuglView* view, const PuglBackend* backend)
 {
 	view->backend = backend;
-	return 0;
+	return PUGL_SUCCESS;
 }
 
 void
@@ -183,11 +193,10 @@ puglGetVisible(PuglView* view)
 	return view->visible;
 }
 
-void
-puglGetSize(PuglView* view, int* width, int* height)
+PuglRect
+puglGetFrame(const PuglView* view)
 {
-	*width  = view->width;
-	*height = view->height;
+	return view->frame;
 }
 
 void*
@@ -196,28 +205,25 @@ puglGetContext(PuglView* view)
 	return view->backend->getContext(view);
 }
 
-void
+PuglStatus
 puglEnterContext(PuglView* view, bool drawing)
 {
 	view->backend->enter(view, drawing);
+	return PUGL_SUCCESS;
 }
 
-void
+PuglStatus
 puglLeaveContext(PuglView* view, bool drawing)
 {
 	view->backend->leave(view, drawing);
+	return PUGL_SUCCESS;
 }
 
-void
-puglIgnoreKeyRepeat(PuglView* view, bool ignore)
-{
-	puglInitWindowHint(view, PUGL_IGNORE_KEY_REPEAT, ignore);
-}
-
-void
+PuglStatus
 puglSetEventFunc(PuglView* view, PuglEventFunc eventFunc)
 {
 	view->eventFunc = eventFunc;
+	return PUGL_SUCCESS;
 }
 
 /** Return the code point for buf, or the replacement character on error. */
@@ -261,8 +267,6 @@ puglDispatchEvent(PuglView* view, const PuglEvent* event)
 	case PUGL_NOTHING:
 		break;
 	case PUGL_CONFIGURE:
-		view->width  = (int)event->configure.width;
-		view->height = (int)event->configure.height;
 		puglEnterContext(view, false);
 		view->eventFunc(view, event);
 		puglLeaveContext(view, false);
@@ -278,3 +282,34 @@ puglDispatchEvent(PuglView* view, const PuglEvent* event)
 		view->eventFunc(view, event);
 	}
 }
+
+const void*
+puglGetInternalClipboard(const PuglView* const view,
+                         const char** const    type,
+                         size_t* const         len)
+{
+	if (len) {
+		*len = view->clipboard.len;
+	}
+
+	if (type) {
+		*type = "text/plain";
+	}
+
+	return view->clipboard.data;
+}
+
+PuglStatus
+puglSetInternalClipboard(PuglView* const   view,
+                         const char* const type,
+                         const void* const data,
+                         const size_t      len)
+{
+	if (type && strcmp(type, "text/plain")) {
+		return PUGL_UNSUPPORTED_TYPE;
+	}
+
+	puglSetBlob(&view->clipboard, data, len);
+	return PUGL_SUCCESS;
+}
+

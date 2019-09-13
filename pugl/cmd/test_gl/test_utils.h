@@ -152,7 +152,7 @@ puglPrintFps(PuglView*       view,
              PuglFpsPrinter* printer,
              unsigned* const framesDrawn)
 {
-	const double thisTime = puglGetTime(view);
+	const double thisTime = 0.0; //puglGetTime(view);
 	if (thisTime > printer->lastReportTime + 5) {
 		const double fps = *framesDrawn / (thisTime - printer->lastReportTime);
 		fprintf(stderr,

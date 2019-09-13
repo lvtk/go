@@ -143,23 +143,25 @@ func (x *testApp) Process(e *pugl.Event) {
 }
 
 func main() {
-	view := pugl.Init()
-	defer view.Destroy()
+	world := pugl.NewWorld()
+	view := world.NewView()
+	defer view.Free()
+	defer world.Free()
 
 	if view == nil {
 		fmt.Println("couldn't init pugl")
 		return
 	}
 
-	view.InitWindowClass("PuglTest")
-	view.InitWindowSize(512, 512)
-	view.InitWindowMinSize(256, 256)
-	view.InitWindowHint(pugl.ContextVersionMajor, 2)
-	view.InitWindowHint(pugl.ContextVersionMinor, 1)
-	view.InitBackend(pgl.Backend())
+	world.SetClassName("PuglTest")
+	view.SetFrame(pugl.Rect{512, 512})
+	view.SetMinSize(256, 256)
+	view.SetViewHint(pugl.ContextVersionMajor, 2)
+	view.SetViewHint(pugl.ContextVersionMinor, 1)
+	view.SetBackend(pgl.Backend())
 
-	view.InitWindowHint(pugl.Resizable, 1)
-	view.InitWindowHint(pugl.Samples, 2)
+	view.SetViewHint(pugl.Resizable, 1)
+	view.SetViewHint(pugl.Samples, 4)
 
 	app := new(testApp)
 	app.quit = false
@@ -170,15 +172,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	view.EnterContext(false)
-	gl.Init()
-	view.LeaveContext(false)
+	view.WithContext(func() {
+		gl.Init()
+	}, false)
 
 	view.ShowWindow()
 
 	for {
-		view.WaitForEvent()
-		view.ProcessEvents()
+		world.PollEvents(0)
+		world.DispatchEvents()
 		if app.quit {
 			break
 		}

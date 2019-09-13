@@ -2,13 +2,18 @@ package pugl
 
 /*
 #include "pugl/pugl.h"
-#include "pugl/pugl_gl_backend.h"
 #include <stdlib.h>
 #include <stdio.h>
+
 extern void event_handler_go(PuglView* view, PuglEvent* event);
 
-static void event_handler(PuglView* view, const PuglEvent* event) {
+static uint8_t get_uchar(const PuglEventText* event, int i) {
+	return (uint8_t) event->string[i];
+}
+
+static PuglStatus event_handler(PuglView* view, const PuglEvent* event) {
 	event_handler_go(view, (PuglEvent*)event);
+	return PUGL_SUCCESS;
 }
 
 static void set_event_handler(PuglView* view) {
@@ -65,6 +70,34 @@ import (
 	"unsafe"
 )
 
+// Event abstraction
+type Event struct {
+	Type      EventType
+	Flags     uint32
+	Button    EventButton
+	Configure EventConfigure
+	Expose    EventExpose
+	Key       EventKey
+	Text      EventText
+	Crossing  EventCrossing
+	Motion    EventMotion
+	Scroll    EventScroll
+	Focus     EventFocus
+	Any       EventAny
+	Close     EventClose
+
+	null C.PuglEvent
+	raw  [C.sizeof_PuglEvent]byte
+}
+
+// EventFunc - A function called when an event occurs.
+type EventFunc func(view *View, event *Event)
+
+// EventHandler interface
+type EventHandler interface {
+	Process(*Event)
+}
+
 type evMapEntry struct {
 	view     *View
 	callback EventFunc
@@ -119,8 +152,8 @@ func (x *Event) update(cev *C.PuglEvent) {
 		x.Button.Time = float64(bev.time)
 		x.Button.X = float64(bev.x)
 		x.Button.Y = float64(bev.y)
-		x.Button.RootX = float64(bev.x_root)
-		x.Button.RootY = float64(bev.y_root)
+		x.Button.XRoot = float64(bev.xRoot)
+		x.Button.YRoot = float64(bev.yRoot)
 		x.Button.State = uint32(bev.state)
 		x.Button.Button = uint32(bev.button)
 	} else if x.Type == Configure {
@@ -129,41 +162,45 @@ func (x *Event) update(cev *C.PuglEvent) {
 		x.Configure.Y = float64(bev.y)
 		x.Configure.Width = float64(bev.width)
 		x.Configure.Height = float64(bev.height)
+		x.Configure.Scale = float64(bev.scale)
 	} else if x.Type == Expose {
 		bev := C.expose(cev)
 		x.Expose.X = float64(bev.x)
 		x.Expose.Y = float64(bev.y)
 		x.Expose.Width = float64(bev.width)
 		x.Expose.Height = float64(bev.height)
-		x.Expose.Count = int(bev.count)
+		x.Expose.Count = int32(bev.count)
 	} else if x.Type == KeyPress || x.Type == KeyRelease {
 		bev := C.key(cev)
 		x.Key.Time = float64(bev.time)
 		x.Key.X = float64(bev.x)
 		x.Key.Y = float64(bev.y)
-		x.Key.RootX = float64(bev.x_root)
-		x.Key.RootY = float64(bev.y_root)
+		x.Key.XRoot = float64(bev.xRoot)
+		x.Key.YRoot = float64(bev.yRoot)
 		x.Key.State = uint32(bev.state)
-		x.Key.KeyCode = uint32(bev.keycode)
+		x.Key.Keycode = uint32(bev.keycode)
 		x.Key.Key = uint32(bev.key)
 	} else if x.Type == Text {
 		bev := C.text(cev)
 		x.Text.Time = float64(bev.time)
 		x.Text.X = float64(bev.x)
 		x.Text.Y = float64(bev.y)
-		x.Text.RootX = float64(bev.x_root)
-		x.Text.RootY = float64(bev.y_root)
+		x.Text.XRoot = float64(bev.xRoot)
+		x.Text.YRoot = float64(bev.yRoot)
 		x.Text.State = uint32(bev.state)
-		x.Text.KeyCode = uint32(bev.keycode)
+		x.Text.Keycode = uint32(bev.keycode)
 		x.Text.Character = uint32(bev.character)
-		// x.Text.StringUTF8 = C.GoString(bev.string)
+		for i := int32(0); i < 8; i++ {
+			x.Text.String[i] = byte(C.get_uchar(bev, C.int(i)))
+		}
+
 	} else if x.Type == EnterNotify || x.Type == LeaveNotify {
 		bev := C.crossing(cev)
 		x.Crossing.Time = float64(bev.time)
 		x.Crossing.X = float64(bev.x)
 		x.Crossing.Y = float64(bev.y)
-		x.Crossing.RootX = float64(bev.x_root)
-		x.Crossing.RootY = float64(bev.y_root)
+		x.Crossing.XRoot = float64(bev.xRoot)
+		x.Crossing.YRoot = float64(bev.yRoot)
 		x.Crossing.State = uint32(bev.state)
 		x.Crossing.Mode = CrossingMode(bev.mode)
 	} else if x.Type == MotionNotify {
@@ -171,21 +208,21 @@ func (x *Event) update(cev *C.PuglEvent) {
 		x.Motion.Time = float64(bev.time)
 		x.Motion.X = float64(bev.x)
 		x.Motion.Y = float64(bev.y)
-		x.Motion.RootX = float64(bev.x_root)
-		x.Motion.RootY = float64(bev.y_root)
+		x.Motion.XRoot = float64(bev.xRoot)
+		x.Motion.YRoot = float64(bev.yRoot)
 		x.Motion.State = uint32(bev.state)
-		x.Motion.IsHint = bool(bev.is_hint)
+		x.Motion.IsHint = bool(bev.isHint)
 		x.Motion.Focus = bool(bev.focus)
 	} else if x.Type == Scroll {
 		bev := C.scroll(cev)
 		x.Scroll.Time = float64(bev.time)
 		x.Scroll.X = float64(bev.x)
 		x.Scroll.Y = float64(bev.y)
-		x.Scroll.RootX = float64(bev.x_root)
-		x.Scroll.RootY = float64(bev.y_root)
+		x.Scroll.XRoot = float64(bev.xRoot)
+		x.Scroll.YRoot = float64(bev.yRoot)
 		x.Scroll.State = uint32(bev.state)
-		x.Scroll.DX = float64(bev.dx)
-		x.Scroll.DY = float64(bev.dy)
+		x.Scroll.Dx = float64(bev.dx)
+		x.Scroll.Dy = float64(bev.dy)
 	} else if x.Type == FocusIn || x.Type == FocusOut {
 		bev := C.focus(cev)
 		x.Focus.Grab = bool(bev.grab)

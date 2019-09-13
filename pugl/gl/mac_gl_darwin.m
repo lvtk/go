@@ -40,12 +40,14 @@ typedef NSUInteger NSWindowStyleMask;
 
 - (id) initWithFrame:(NSRect)frame
 {
-	const int major   = puglview->hints.context_version_major;
-	const int profile = ((puglview->hints.use_compat_profile || major < 3)
-	                     ? NSOpenGLProfileVersionLegacy
-	                     : puglview->hints.context_version_major >= 4
-	                       ? NSOpenGLProfileVersion4_1Core
-	                       : NSOpenGLProfileVersion3_2Core);
+	const bool compat  = puglview->hints[PUGL_USE_COMPAT_PROFILE];
+	const int  samples = puglview->hints[PUGL_SAMPLES];
+	const int  major   = puglview->hints[PUGL_CONTEXT_VERSION_MAJOR];
+	const int  profile = ((compat || major < 3)
+	                      ? NSOpenGLProfileVersionLegacy
+	                      : (major >= 4
+	                         ? NSOpenGLProfileVersion4_1Core
+	                         : NSOpenGLProfileVersion3_2Core));
 
 	NSOpenGLPixelFormatAttribute pixelAttribs[16] = {
 		NSOpenGLPFADoubleBuffer,
@@ -53,9 +55,9 @@ typedef NSUInteger NSWindowStyleMask;
 		NSOpenGLPFAOpenGLProfile, profile,
 		NSOpenGLPFAColorSize,     32,
 		NSOpenGLPFADepthSize,     32,
-		NSOpenGLPFAMultisample,   puglview->hints.samples ? 1 : 0,
-		NSOpenGLPFASampleBuffers, puglview->hints.samples ? 1 : 0,
-		NSOpenGLPFASamples,       puglview->hints.samples,
+		NSOpenGLPFAMultisample,   samples ? 1 : 0,
+		NSOpenGLPFASampleBuffers, samples ? 1 : 0,
+		NSOpenGLPFASamples,       samples,
 		0};
 
 	NSOpenGLPixelFormat* pixelFormat = [
@@ -67,6 +69,8 @@ typedef NSUInteger NSWindowStyleMask;
 	} else {
 		self = [super initWithFrame:frame];
 	}
+
+	[self setWantsBestResolutionOpenGLSurface:YES];
 
 	if (self) {
 		[[self openGLContext] makeCurrentContext];
@@ -80,15 +84,7 @@ typedef NSUInteger NSWindowStyleMask;
 	PuglWrapperView* wrapper = (PuglWrapperView*)[self superview];
 
 	[super reshape];
-	[wrapper dispatchConfigure:[self bounds]];
-}
-
-- (void) update
-{
-	PuglWrapperView* wrapper = (PuglWrapperView*)[self superview];
-
-	[super update];
-	[wrapper dispatchConfigure:[self bounds]];
+	[wrapper setReshaped];
 }
 
 - (void) drawRect:(NSRect)rect
@@ -99,31 +95,33 @@ typedef NSUInteger NSWindowStyleMask;
 
 @end
 
-static int
+static PuglStatus
 puglMacGlConfigure(PuglView* PUGL_UNUSED(view))
 {
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-static int
+static PuglStatus
 puglMacGlCreate(PuglView* view)
 {
 	PuglInternals*  impl     = view->impl;
 	PuglOpenGLView* drawView = [PuglOpenGLView alloc];
+	const NSRect    rect     = NSMakeRect(
+		0, 0, view->frame.width, view->frame.height);
 
 	drawView->puglview = view;
-	[drawView initWithFrame:NSMakeRect(0, 0, view->width, view->height)];
-	if (view->hints.resizable) {
+	[drawView initWithFrame:rect];
+	if (view->hints[PUGL_RESIZABLE]) {
 		[drawView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 	} else {
 		[drawView setAutoresizingMask:NSViewNotSizable];
 	}
 
 	impl->drawView = drawView;
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-static int
+static PuglStatus
 puglMacGlDestroy(PuglView* view)
 {
 	PuglOpenGLView* const drawView = (PuglOpenGLView*)view->impl->drawView;
@@ -132,19 +130,19 @@ puglMacGlDestroy(PuglView* view)
 	[drawView release];
 
 	view->impl->drawView = nil;
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-static int
+static PuglStatus
 puglMacGlEnter(PuglView* view, bool PUGL_UNUSED(drawing))
 {
 	PuglOpenGLView* const drawView = (PuglOpenGLView*)view->impl->drawView;
 
 	[[drawView openGLContext] makeCurrentContext];
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-static int
+static PuglStatus
 puglMacGlLeave(PuglView* view, bool drawing)
 {
 	PuglOpenGLView* const drawView = (PuglOpenGLView*)view->impl->drawView;
@@ -155,17 +153,17 @@ puglMacGlLeave(PuglView* view, bool drawing)
 
 	[NSOpenGLContext clearCurrentContext];
 
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-static int
+static PuglStatus
 puglMacGlResize(PuglView* view, int PUGL_UNUSED(width), int PUGL_UNUSED(height))
 {
 	PuglOpenGLView* const drawView = (PuglOpenGLView*)view->impl->drawView;
 
 	[drawView reshape];
 
-	return 0;
+	return PUGL_SUCCESS;
 }
 
 static void*

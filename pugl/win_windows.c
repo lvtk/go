@@ -45,33 +45,70 @@
 #endif
 
 #define PUGL_LOCAL_CLOSE_MSG (WM_USER + 50)
+#define PUGL_LOCAL_MARK_MSG  (WM_USER + 51)
 #define PUGL_RESIZE_TIMER_ID 9461
 #define PUGL_URGENT_TIMER_ID 9462
 
 typedef BOOL (WINAPI *PFN_SetProcessDPIAware)(void);
 
-static const TCHAR* DEFAULT_CLASSNAME = "Pugl";
+LRESULT CALLBACK
+wndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 static wchar_t*
 puglUtf8ToWideChar(const char* const utf8)
 {
-    const int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
-    if (len > 0) {
-	    wchar_t* result = (wchar_t*)calloc((size_t)len, sizeof(wchar_t));
-	    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, result, len);
-	    return result;
-    }
+	const int len = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+	if (len > 0) {
+		wchar_t* result = (wchar_t*)calloc((size_t)len, sizeof(wchar_t));
+		MultiByteToWideChar(CP_UTF8, 0, utf8, -1, result, len);
+		return result;
+	}
 
-    return NULL;
+	return NULL;
 }
 
-LRESULT CALLBACK
-wndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
-
-PuglInternals*
-puglInitInternals(void)
+static char*
+puglWideCharToUtf8(const wchar_t* const wstr, size_t* len)
 {
-	PuglInternals* impl = (PuglInternals*)calloc(1, sizeof(PuglInternals));
+	int n = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+	if (n > 0) {
+		char* result = (char*)calloc((size_t)n, sizeof(char));
+		WideCharToMultiByte(CP_UTF8, 0, wstr, -1, result, n, NULL, NULL);
+		*len = (size_t)n;
+		return result;
+	}
+
+	return NULL;
+}
+
+static bool
+puglRegisterWindowClass(const char* name)
+{
+	WNDCLASSEX wc = { 0 };
+	if (GetClassInfoEx(GetModuleHandle(NULL), name, &wc)) {
+		return true; // Already registered
+	}
+
+	wc.cbSize        = sizeof(wc);
+	wc.style         = CS_OWNDC;
+	wc.lpfnWndProc   = wndProc;
+	wc.hInstance     = GetModuleHandle(NULL);
+	wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	wc.lpszClassName = name;
+
+	return RegisterClassEx(&wc);
+}
+
+PuglWorldInternals*
+puglInitWorldInternals(void)
+{
+	PuglWorldInternals* impl = (PuglWorldInternals*)calloc(
+		1, sizeof(PuglWorldInternals));
+	if (!impl) {
+		return NULL;
+	}
 
 	HMODULE user32 = LoadLibrary("user32.dll");
 	if (user32) {
@@ -81,6 +118,8 @@ puglInitInternals(void)
 		if (SetProcessDPIAware) {
 			SetProcessDPIAware();
 		}
+
+		FreeLibrary(user32);
 	}
 
 	LARGE_INTEGER frequency;
@@ -90,58 +129,64 @@ puglInitInternals(void)
 	return impl;
 }
 
-int
+PuglInternals*
+puglInitViewInternals(void)
+{
+	return (PuglInternals*)calloc(1, sizeof(PuglInternals));
+}
+
+PuglStatus
+puglPollEvents(PuglWorld* world, const double timeout)
+{
+	(void)world;
+
+	if (timeout < 0) {
+		WaitMessage();
+	} else {
+		MsgWaitForMultipleObjects(
+			0, NULL, FALSE, (DWORD)(timeout * 1e3), QS_ALLEVENTS);
+	}
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
 puglCreateWindow(PuglView* view, const char* title)
 {
 	PuglInternals* impl = view->impl;
 
-	const char* className = view->windowClass ? view->windowClass : DEFAULT_CLASSNAME;
-
-	title = title ? title : "Window";
+	title = title ? title : view->world->className;
 
 	// Get refresh rate for resize draw timer
 	DEVMODEA devMode = {0};
 	EnumDisplaySettingsA(NULL, ENUM_CURRENT_SETTINGS, &devMode);
 	view->impl->refreshRate = devMode.dmDisplayFrequency;
 
-	// Register window class
-	WNDCLASSEX wc;
-	memset(&wc, 0, sizeof(wc));
-	wc.cbSize        = sizeof(wc);
-	wc.style         = CS_OWNDC;
-	wc.lpfnWndProc   = wndProc;
-	wc.hInstance     = GetModuleHandle(NULL);
-	wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION); // TODO: user-specified icon
-	wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-	wc.lpszClassName = className;
-	if (!RegisterClassEx(&wc)) {
-		return 1;
+	// Register window class if necessary
+	if (!puglRegisterWindowClass(view->world->className)) {
+		return PUGL_REGISTRATION_FAILED;
 	}
 
 	if (!view->backend || !view->backend->configure) {
-		return 1;
+		return PUGL_BAD_BACKEND;
 	}
 
-	int st = view->backend->configure(view);
+	PuglStatus st = view->backend->configure(view);
 	if (st || !impl->surface) {
-		return 2;
+		return PUGL_SET_FORMAT_FAILED;
 	} else if ((st = view->backend->create(view))) {
-		return 3;
+		return PUGL_CREATE_CONTEXT_FAILED;
 	}
 
-	wchar_t* wtitle = puglUtf8ToWideChar(title);
-	if (wtitle) {
-		SetWindowTextW(impl->hwnd, wtitle);
-		free(wtitle);
+	if (title) {
+		puglSetWindowTitle(view, title);
 	}
 
 	SetWindowLongPtr(impl->hwnd, GWLP_USERDATA, (LONG_PTR)view);
 
-	return 0;
+	return PUGL_SUCCESS;
 }
 
-void
+PuglStatus
 puglShowWindow(PuglView* view)
 {
 	PuglInternals* impl = view->impl;
@@ -149,29 +194,35 @@ puglShowWindow(PuglView* view)
 	ShowWindow(impl->hwnd, SW_SHOWNORMAL);
 	SetFocus(impl->hwnd);
 	view->visible = true;
+	return PUGL_SUCCESS;
 }
 
-void
+PuglStatus
 puglHideWindow(PuglView* view)
 {
 	PuglInternals* impl = view->impl;
 
 	ShowWindow(impl->hwnd, SW_HIDE);
 	view->visible = false;
+	return PUGL_SUCCESS;
 }
 
 void
-puglDestroy(PuglView* view)
+puglFreeViewInternals(PuglView* view)
 {
 	if (view) {
 		view->backend->destroy(view);
 		ReleaseDC(view->impl->hwnd, view->impl->hdc);
 		DestroyWindow(view->impl->hwnd);
-		UnregisterClass(view->windowClass ? view->windowClass : DEFAULT_CLASSNAME, NULL);
-		free(view->windowClass);
 		free(view->impl);
-		free(view);
 	}
+}
+
+void
+puglFreeWorldInternals(PuglWorld* world)
+{
+	UnregisterClass(world->className, NULL);
+	free(world->impl);
 }
 
 static PuglKey
@@ -251,8 +302,8 @@ initMouseEvent(PuglEvent* event,
 	event->button.type   = press ? PUGL_BUTTON_PRESS : PUGL_BUTTON_RELEASE;
 	event->button.x      = GET_X_LPARAM(lParam);
 	event->button.y      = GET_Y_LPARAM(lParam);
-	event->button.x_root = pt.x;
-	event->button.y_root = pt.y;
+	event->button.xRoot  = pt.x;
+	event->button.yRoot  = pt.y;
 	event->button.state  = getModifiers();
 	event->button.button = (uint32_t)button;
 }
@@ -267,8 +318,8 @@ initScrollEvent(PuglEvent* event, PuglView* view, LPARAM lParam)
 	event->scroll.type   = PUGL_SCROLL;
 	event->scroll.x      = pt.x;
 	event->scroll.y      = pt.y;
-	event->scroll.x_root = GET_X_LPARAM(lParam);
-	event->scroll.y_root = GET_Y_LPARAM(lParam);
+	event->scroll.xRoot  = GET_X_LPARAM(lParam);
+	event->scroll.yRoot  = GET_Y_LPARAM(lParam);
 	event->scroll.state  = getModifiers();
 	event->scroll.dx     = 0;
 	event->scroll.dy     = 0;
@@ -280,7 +331,7 @@ puglDecodeUTF16(const wchar_t* buf, const int len)
 {
 	const uint32_t c0 = buf[0];
 	const uint32_t c1 = buf[0];
-    if (c0 >= 0xD800 && c0 < 0xDC00) {
+	if (c0 >= 0xD800 && c0 < 0xDC00) {
 		if (len < 2) {
 			return 0xFFFD;  // Surrogate, but length is only 1
 		} else if (c1 >= 0xDC00 && c1 <= 0xDFFF) {
@@ -290,7 +341,7 @@ puglDecodeUTF16(const wchar_t* buf, const int len)
 		return 0xFFFD;  // Unpaired surrogates
 	}
 
-    return c0;
+	return c0;
 }
 
 static void
@@ -319,8 +370,8 @@ initKeyEvent(PuglEventKey* event,
 	event->type    = press ? PUGL_KEY_PRESS : PUGL_KEY_RELEASE;
 	event->time    = GetMessageTime() / 1e3;
 	event->state   = getModifiers();
-	event->x_root  = rpos.x;
-	event->y_root  = rpos.y;
+	event->xRoot   = rpos.x;
+	event->yRoot   = rpos.y;
 	event->x       = cpos.x;
 	event->y       = cpos.y;
 	event->keycode = (uint32_t)((lParam & 0xFF0000) >> 16);
@@ -360,7 +411,7 @@ initCharEvent(PuglEvent* event, PuglView* view, WPARAM wParam, LPARAM lParam)
 static bool
 ignoreKeyEvent(PuglView* view, LPARAM lParam)
 {
-	return view->hints.ignoreKeyRepeat && (lParam & (1 << 30));
+	return view->hints[PUGL_IGNORE_KEY_REPEAT] && (lParam & (1 << 30));
 }
 
 static RECT
@@ -368,16 +419,25 @@ handleConfigure(PuglView* view, PuglEvent* event)
 {
 	RECT rect;
 	GetClientRect(view->impl->hwnd, &rect);
-	view->width  = rect.right - rect.left;
-	view->height = rect.bottom - rect.top;
+	MapWindowPoints(view->impl->hwnd,
+	                view->parent ? (HWND)view->parent : HWND_DESKTOP,
+	                (LPPOINT)&rect,
+	                2);
+
+	view->frame.x      = rect.left;
+	view->frame.y      = rect.top;
+	view->frame.width  = rect.right - rect.left;
+	view->frame.height = rect.bottom - rect.top;
 
 	event->configure.type   = PUGL_CONFIGURE;
-	event->configure.x      = rect.left;
-	event->configure.y      = rect.top;
-	event->configure.width  = view->width;
-	event->configure.height = view->height;
+	event->configure.x      = view->frame.x;
+	event->configure.y      = view->frame.y;
+	event->configure.width  = view->frame.width;
+	event->configure.height = view->frame.height;
 
-	view->backend->resize(view, view->width, view->height);
+	view->backend->resize(view,
+	                      rect.right - rect.left,
+	                      rect.bottom - rect.top);
 	return rect;
 }
 
@@ -415,8 +475,8 @@ constrainAspect(const PuglView* const view,
                 RECT* const           size,
                 const WPARAM          wParam)
 {
-	const float minA = (float)view->min_aspect_x / (float)view->min_aspect_y;
-	const float maxA = (float)view->max_aspect_x / (float)view->max_aspect_y;
+	const float minA = (float)view->minAspectX / (float)view->minAspectY;
+	const float maxA = (float)view->maxAspectX / (float)view->maxAspectY;
 	const int   w    = size->right - size->left;
 	const int   h    = size->bottom - size->top;
 	const float a    = (float)w / (float)h;
@@ -468,21 +528,21 @@ handleMessage(PuglView* view, UINT message, WPARAM wParam, LPARAM lParam)
 	switch (message) {
 	case WM_SHOWWINDOW:
 		rect = handleConfigure(view, &event);
-		puglPostRedisplay(view);
+		RedrawWindow(view->impl->hwnd, NULL, NULL,
+		             RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_INTERNALPAINT);
 		break;
 	case WM_SIZE:
 		rect = handleConfigure(view, &event);
-		RedrawWindow(view->impl->hwnd, NULL, NULL,
-		             RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_INTERNALPAINT|
-		             RDW_UPDATENOW);
+		InvalidateRect(view->impl->hwnd, NULL, false);
 		break;
 	case WM_SIZING:
-		if (view->min_aspect_x) {
+		if (view->minAspectX) {
 			constrainAspect(view, (RECT*)lParam, wParam);
 			return TRUE;
 		}
 		break;
 	case WM_ENTERSIZEMOVE:
+	case WM_ENTERMENULOOP:
 		view->impl->resizing = true;
 		SetTimer(view->impl->hwnd,
 		         PUGL_RESIZE_TIMER_ID,
@@ -498,14 +558,15 @@ handleMessage(PuglView* view, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_EXITSIZEMOVE:
+	case WM_EXITMENULOOP:
 		KillTimer(view->impl->hwnd, PUGL_RESIZE_TIMER_ID);
 		view->impl->resizing = false;
 		puglPostRedisplay(view);
 		break;
 	case WM_GETMINMAXINFO:
 		mmi                   = (MINMAXINFO*)lParam;
-		mmi->ptMinTrackSize.x = view->min_width;
-		mmi->ptMinTrackSize.y = view->min_height;
+		mmi->ptMinTrackSize.x = view->minWidth;
+		mmi->ptMinTrackSize.y = view->minHeight;
 		break;
 	case WM_PAINT:
 		GetUpdateRect(view->impl->hwnd, &rect, false);
@@ -539,10 +600,10 @@ handleMessage(PuglView* view, UINT message, WPARAM wParam, LPARAM lParam)
 		event.motion.time    = GetMessageTime() / 1e3;
 		event.motion.x       = GET_X_LPARAM(lParam);
 		event.motion.y       = GET_Y_LPARAM(lParam);
-		event.motion.x_root  = pt.x;
-		event.motion.y_root  = pt.y;
+		event.motion.xRoot   = pt.x;
+		event.motion.yRoot   = pt.y;
 		event.motion.state   = getModifiers();
-		event.motion.is_hint = false;
+		event.motion.isHint  = false;
 		break;
 	case WM_MOUSELEAVE:
 		GetCursorPos(&pt);
@@ -615,20 +676,29 @@ handleMessage(PuglView* view, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-void
+PuglStatus
 puglGrabFocus(PuglView* view)
 {
 	SetFocus(view->impl->hwnd);
+	return PUGL_SUCCESS;
 }
 
-void
+bool
+puglHasFocus(const PuglView* view)
+{
+	return GetFocus() == view->impl->hwnd;
+}
+
+PuglStatus
 puglRequestAttention(PuglView* view)
 {
-	if (!view->impl->mouseTracked || GetFocus() != view->impl->hwnd) {
+	if (!view->impl->mouseTracked || !puglHasFocus(view)) {
 		FlashWindow(view->impl->hwnd, TRUE);
 		SetTimer(view->impl->hwnd, PUGL_URGENT_TIMER_ID, 500, NULL);
 		view->impl->flashing = true;
 	}
+
+	return PUGL_SUCCESS;
 }
 
 PuglStatus
@@ -638,16 +708,45 @@ puglWaitForEvent(PuglView* PUGL_UNUSED(view))
 	return PUGL_SUCCESS;
 }
 
-PuglStatus
-puglProcessEvents(PuglView* view)
+PUGL_API PuglStatus
+puglDispatchEvents(PuglWorld* world)
 {
-	MSG msg;
-	while (PeekMessage(&msg, view->impl->hwnd, 0, 0, PM_REMOVE)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+	for (size_t i = 0; i < world->numViews; ++i) {
+		if (world->views[i]->redisplay) {
+			UpdateWindow(world->views[i]->impl->hwnd);
+			world->views[i]->redisplay = false;
+		}
+	}
+
+	/* Windows has no facility to process only currently queued messages, which
+	   causes the event loop to run forever in cases like mouse movement where
+	   the queue is constantly being filled with new messages.  To work around
+	   this, we post a message to ourselves before starting, record its time
+	   when it is received, then break the loop on the first message that was
+	   created afterwards. */
+	PostMessage(NULL, PUGL_LOCAL_MARK_MSG, 0, 0);
+
+	long markTime = 0;
+	MSG  msg;
+	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+		if (msg.message == PUGL_LOCAL_MARK_MSG) {
+			markTime = GetMessageTime();
+		} else {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+			if (markTime != 0 && GetMessageTime() > markTime) {
+				break;
+			}
+		}
 	}
 
 	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglProcessEvents(PuglView* view)
+{
+	return puglDispatchEvents(view->world);
 }
 
 LRESULT CALLBACK
@@ -674,24 +773,154 @@ wndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 double
-puglGetTime(PuglView* view)
+puglGetTime(const PuglWorld* world)
 {
-    LARGE_INTEGER count;
-    QueryPerformanceCounter(&count);
-    const double now = (double)count.QuadPart / view->impl->timerFrequency;
-    return now - view->start_time;
+	LARGE_INTEGER count;
+	QueryPerformanceCounter(&count);
+	return ((double)count.QuadPart / world->impl->timerFrequency -
+	        world->startTime);
 }
 
-void
+PuglStatus
 puglPostRedisplay(PuglView* view)
 {
-	RedrawWindow(view->impl->hwnd, NULL, NULL,
-	             RDW_INVALIDATE|RDW_ALLCHILDREN|RDW_INTERNALPAINT);
-	UpdateWindow(view->impl->hwnd);
+	InvalidateRect(view->impl->hwnd, NULL, false);
+	view->redisplay = true;
+	return PUGL_SUCCESS;
 }
 
 PuglNativeWindow
 puglGetNativeWindow(PuglView* view)
 {
 	return (PuglNativeWindow)view->impl->hwnd;
+}
+
+PuglStatus
+puglSetWindowTitle(PuglView* view, const char* title)
+{
+	puglSetString(&view->title, title);
+
+	wchar_t* wtitle = puglUtf8ToWideChar(title);
+	if (wtitle) {
+		SetWindowTextW(view->impl->hwnd, wtitle);
+		free(wtitle);
+	}
+
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetFrame(PuglView* view, const PuglRect frame)
+{
+	view->frame = frame;
+
+	if (view->impl->hwnd) {
+		RECT rect = { (long)frame.x,
+		              (long)frame.y,
+		              (long)frame.x + (long)frame.width,
+		              (long)frame.y + (long)frame.height };
+
+		AdjustWindowRectEx(&rect, puglWinGetWindowFlags(view),
+		                   FALSE,
+		                   puglWinGetWindowExFlags(view));
+
+		if (!SetWindowPos(view->impl->hwnd, HWND_TOP,
+		                  rect.left, rect.top,
+		                  rect.right - rect.left, rect.bottom - rect.top,
+		                  (SWP_NOACTIVATE|SWP_NOOWNERZORDER|SWP_NOZORDER))) {
+			return PUGL_UNKNOWN_ERROR;
+		}
+	}
+
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetMinSize(PuglView* const view, const int width, const int height)
+{
+	view->minWidth  = width;
+	view->minHeight = height;
+	return PUGL_SUCCESS;
+}
+
+PuglStatus
+puglSetAspectRatio(PuglView* const view,
+                   const int       minX,
+                   const int       minY,
+                   const int       maxX,
+                   const int       maxY)
+{
+	view->minAspectX = minX;
+	view->minAspectY = minY;
+	view->maxAspectX = maxX;
+	view->maxAspectY = maxY;
+	return PUGL_SUCCESS;
+}
+
+const void*
+puglGetClipboard(PuglView* const    view,
+                 const char** const type,
+                 size_t* const      len)
+{
+	PuglInternals* const impl = view->impl;
+
+	if (!IsClipboardFormatAvailable(CF_UNICODETEXT) ||
+	    !OpenClipboard(impl->hwnd)) {
+		return NULL;
+	}
+
+	HGLOBAL  mem  = GetClipboardData(CF_UNICODETEXT);
+	wchar_t* wstr = mem ? (wchar_t*)GlobalLock(mem) : NULL;
+	if (!wstr) {
+		CloseClipboard();
+		return NULL;
+	}
+
+	free(view->clipboard.data);
+	view->clipboard.data = puglWideCharToUtf8(wstr, &view->clipboard.len);
+	GlobalUnlock(mem);
+	CloseClipboard();
+
+	return puglGetInternalClipboard(view, type, len);
+}
+
+PuglStatus
+puglSetClipboard(PuglView* const   view,
+                 const char* const type,
+                 const void* const data,
+                 const size_t      len)
+{
+	PuglInternals* const impl = view->impl;
+
+	PuglStatus st = puglSetInternalClipboard(view, type, data, len);
+	if (st) {
+		return st;
+	} else if (!OpenClipboard(impl->hwnd)) {
+		return PUGL_UNKNOWN_ERROR;
+	}
+
+	// Measure string and allocate global memory for clipboard
+	const char* str  = (const char*)data;
+	const int   wlen = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
+	HGLOBAL     mem  = GlobalAlloc(GMEM_MOVEABLE, (wlen + 1) * sizeof(wchar_t));
+	if (!mem) {
+		CloseClipboard();
+		return PUGL_UNKNOWN_ERROR;
+	}
+
+	// Lock global memory
+	wchar_t* wstr = (wchar_t*)GlobalLock(mem);
+	if (!wstr) {
+		GlobalFree(mem);
+		CloseClipboard();
+		return PUGL_UNKNOWN_ERROR;
+	}
+
+	// Convert string into global memory and set it as clipboard data
+	MultiByteToWideChar(CP_UTF8, 0, str, (int)len, wstr, wlen);
+	wstr[wlen] = 0;
+	GlobalUnlock(mem);
+	SetClipboardData(CF_UNICODETEXT, mem);
+	CloseClipboard();
+	return PUGL_SUCCESS;
 }
