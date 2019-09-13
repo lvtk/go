@@ -8,10 +8,6 @@ package urid
 static uint32_t call_map(LV2_URID_Map* map, const char* uri) {
 	return map->map(map->handle, uri);
 }
-
-static const char* call_unmap(LV2_URID_Unmap* unmap, uint32_t urid) {
-	return unmap->unmap(unmap->handle, urid);
-}
 */
 import "C"
 import (
