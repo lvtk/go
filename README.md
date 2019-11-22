@@ -1,4 +1,7 @@
 # LV2 related Go bindings
+
+__Important__: the packages in this directory are experimental and for development/learning purposes.  Things I consider stable & ready for use in the real world can be found at the toplevel of this organization. Like https://github.com/lvtk/go-lv2 and  https://github.com/lvtk/go-pugl for example.
+
 See each sub directory for details
 
 ## Dislaimer
